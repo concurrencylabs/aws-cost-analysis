@@ -16,20 +16,20 @@ select * from hourly limit 10
 
 /* Just a sanity check to see which time intervals are included in your queries */
 SELECT distinct(identity_timeinterval)
-FROM HOURLY
+FROM billing.hourly
 ORDER BY  identity_timeinterval
 
 
 /* View total cost */
 SELECT round(sum(cast(lineitem_unblendedcost AS double)),2) AS sum_unblendedcost
-FROM HOURLY
+FROM billing.hourly
 WHERE period = ''
 
 
 /* View cost by AWS Service */
 SELECT lineitem_productcode,
          round(sum(cast(lineitem_unblendedcost AS double)),2) AS sum_unblendedcost
-FROM HOURLY
+FROM billing.hourly
 WHERE period='<period>'
 GROUP BY  lineitem_productcode
 ORDER BY  sum_unblendedcost DESC
@@ -43,7 +43,7 @@ is inferred based on usage, but it's not always clear'
 
 SELECT lineitem_productcode, lineItem_UsageType,
          round(sum(cast(lineitem_unblendedcost AS double)),2) AS sum_unblendedcost
-FROM HOURLY
+FROM billing.hourly
 WHERE period='<period>'
 GROUP BY  lineitem_productcode, lineItem_UsageType
 ORDER BY  sum_unblendedcost DESC
@@ -58,7 +58,7 @@ This information is not available using AWS Cost Explorer. Cost Explorer only sh
 SELECT lineitem_productCode,
          lineitem_resourceId,
          sum(cast(lineitem_unblendedcost AS double)) AS sum_unblendedcost
-FROM HOURLY
+FROM billing.hourly
 WHERE period='<period>'
 GROUP BY  lineitem_productCode,lineitem_resourceId
 ORDER BY  sum_unblendedcost desc
@@ -77,7 +77,7 @@ ORDER BY sum_unblendedcost DESC
 
 
 /* See all the active resources in your AWS account */
-SELECT DISTINCT lineitem_resourceId FROM HOURLY limit 100
+SELECT DISTINCT lineitem_resourceId FROM billing.hourly limit 100
 
 
 /* The search by a particular resource */
@@ -89,7 +89,7 @@ SELECT identity_lineitemid,
          lineitem_usageamount,
          lineitem_unblendedcost,
          lineItem_ResourceId
-FROM hourly
+FROM billing.hourly
 WHERE lineItem_ResourceId ='<resourceID>'
 ORDER BY identity_timeinterval
 
@@ -100,7 +100,7 @@ See all your resources grouped by AWS Service
 This view is not available in AWS Cost Explorer
 */
 SELECT lineitem_productcode, lineitem_resourceId
-FROM billing.HOURLY
+FROM billing.hourly
 WHERE lineitem_resourceId <> ''
 
 group by lineitem_productcode, lineitem_resourceId
@@ -112,17 +112,17 @@ See cost incurred chronologically, with hourly granularity
 */
 
 SELECT lineitem_usagestartdate, round(sum(cast(lineitem_unblendedcost AS double)),2) AS sum_unblendedcost
-FROM billing.HOURLY
+FROM billing.hourly
 WHERE period='<period>'
 GROUP BY  lineitem_usagestartdate
 ORDER BY  lineitem_usagestartdate
 
 
 
-/* View EC2 Instance cost by EC2 instance type */
+/* TODO: View EC2 Instance cost by EC2 instance type */
 
 
-/* View Data Transfer FROM and TO */
+/* TODO: View Data Transfer FROM and TO */
 
 
 /*
@@ -130,7 +130,8 @@ View latest time interval that is avaiable in Athena
 If it's too old, you might want to refresh the Cost and Usage data in your S3 bucket'
 */
 
-SELECT MAX(identity_timeinterval) as latest_interval FROM billing.hourly
+SELECT MAX(identity_timeinterval) as latest_interval
+FROM billing.hourly
 WHERE period='<period>'
 
 

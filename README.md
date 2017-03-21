@@ -7,6 +7,10 @@ For more details, refer to this article in the Concurrency Labs blog:
 
 https://www.concurrencylabs.com/blog/aws-cost-reduction-athena
 
+
+
+## What's in this repo
+
 The repo contains the following files:
 
 ### report_utils.py
@@ -15,7 +19,7 @@ This module implements operations that are required to prepare AWS Cost and Usag
 be analyzed using AWS Athena or AWS QuickSight. It copies data from the Cost and Usage Reports S3 bucket (source)
 into a separate S3 Bucket, where they can be queried by Athena, or loaded onto QuickSight.
 
-The scripts performs the following operations:
+The script performs the following operations:
 
 * Execute required data preparations before putting files in an S3 bucket that will be queried by Athena.
   * Athena doesn't like manifest files or anything that is not a data file, therefore this script only
@@ -60,13 +64,36 @@ This will result in better performance and lower Athena cost.
 
 ## Installation Instructions
 
-### Enable AWS Cost and Usage reports
+### 1. Enable AWS Cost and Usage Reports
 
-Refer to <a href="https://www.concurrencylabs.com/blog/aws-cost-reduction-athena/#enable" target="new">this section</a> in the Concurrency Labs article.
+The first step is to make sure that AWS Cost and Usage reports are enabled in your AWS account.
+These are the necessary steps to enable them:
+
+1. Create an S3 bucket to store the reports.
+3. Enable Cost and Usage Reports
+	* Go to the "Billing Dashboard" section in the AWS Management Console, navigate to "Reports"
+	* Click on "Create Report" under "AWS Cost and Usage Reports". A new screen will be displayed.
+	* Set "Time Unit" to "Hourly".
+	* Check "Include Resource IDs"
+	* Make sure support for QuickSight and Redshift is enabled.
+
+This is what the "Select Content" screen should look like:
+
+![AWS Cost Usage Report](https://www.concurrencylabs.com/img/posts/19-athena-reduce-aws-cost/setup-reports.png)
+
+Click on "Next", that should take you to "Select delivery options"	
+	
+1. Specify the S3 bucket where reports will be stored.
+2. Assign the right permissions to the S3 bucket (there is a link in the console that shows
+you the bucket policy)
+	
+Once you complete these steps, AWS will generate and put Cost and Usage reports in the
+S3 bucket you specified. These reports are generated approximately once per day and it's
+hard to predict when exactly they will be copied to S3. This means you'll have to wait 
+approximately one day before you see any reports in your S3 bucket.
 
 
-### Install this repo
-
+### 2. Install this repo
 
 There are 3 steps that need to happen before you can run this script the first time:
 
@@ -84,17 +111,19 @@ place the modified Cost and Usage files.
  to read files from the source buckets and to put objects into the destination buckets.
 
 
-### Running the scripts
+**3. Setting environment variables**
 
-Make sure the following environment variables are set, which are required by Boto:
+Before executing any script, make sure the following environment variables are set, which are required by Boto:
 
 ```export AWS_DEFAULT_PROFILE=<my-aws-default-credentials-profile>```
 ```export AWS_DEFAULT_REGION=<us-east-1,eu-west-1, etc.>```
 
 
-There are 4 different operations you can do:
+### 3. Executing the scripts
 
-** Prepare files for Athena **
+There are 4 different operations available:
+
+**Prepare files for Athena **
 
 This operation copies files from a destination S3 bucket and prepare the files so they
 can be queried using Athena (de-duplication, remove manifest files, etc.)
@@ -106,7 +135,7 @@ python report_utils.py --action=prepare-athena --source-bucket=<s3-bucket-with-c
 Keep in mind that AWS creates Cost and Usage files daily, therefore you must execute this
 script if you want to have the latest billing data in Athena.  
 
-** Prepare files for QuickSight **
+**Prepare files for QuickSight **
 
 Same as Athena, except file headers must be kept.
 
@@ -114,7 +143,7 @@ Same as Athena, except file headers must be kept.
 python report_utils.py --action=prepare-quicksight --source-bucket=<s3-bucket-with-cost-usage-reports> --source-prefix=<folder>/ --dest-bucket=<s3-bucket-for-athena-files> --dest-prefix=<folder>/ --year=<year-in-4-digits> --month=<month-in-1-or-2-digits>
 ```
 
-** Prepare QuickSight manifest**
+**Prepare QuickSight manifest**
 
 If you want to upload files to QuickSight, you must provide a manifest file. The manifest file essentially
 lists the location of the data files, so QuickSight can find them and load them. In this case, the source-bucket parameter
@@ -124,7 +153,7 @@ is the S3 bucket that contains files that are ready to be loaded.
 python report_utils.py --source-bucket=<s3-bucket-for-quicksight-files> --source-prefix=<folder>/ --action=create-manifest --manifest-type=quicksight --year=2017 --month=3
 ```
 
-** Prepare Redshigt manifest**
+**Prepare Redshift manifest**
 
 As a bonus, if you want to upload files in QuickSight using a Redshift manifest, the script creates one for you.
 
@@ -137,8 +166,42 @@ instance located in the same region as your S3 buckets. This way you won't pay f
 transfer cost out to the internet.
 
 
+## Example: Using Athena for AWS Cost and Usage report analysis
 
-And that's it. Now you can query your AWS Cost and Usage data! You can use the sample queries in **athena_queries.sql**
+**1. Enable AWS Cost and Usage reports**
+[see instructions above]. Wait at least one day for the first report to be available in S3.
+
+**2. Prepare AWS Cost and Usage data for Athena**
+
+```
+python report_utils.py --action=prepare-athena --source-bucket=<s3-bucket-with-cost-usage-reports> --source-prefix=<folder>/ --dest-bucket=<s3-bucket-for-athena-files> --dest-prefix=<folder>/ --year=<year-in-4-digits> --month=<month-in-1-or-2-digits>
+```
+
+**3. Create Athena database and table**
+
+Once your cleaned-up files are in S3, you need to have an Athena database. You can create one from the Athena console by running a SQL statement:
+
+```
+CREATE DATABASE billing;
+```
+
+You can use an existing database if you want, that's up to you. For this example we'll use a new database named 'billing'.
+
+The next step is to create an Athena table. You can do this by running the statement in <a href="https://github.com/ConcurrenyLabs/aws-cost-analysis/blob/master/create_athena_table.sql" target="new">**create_athena_table.sql**</a> from the Athena console.
+ 
+Note this Athena table is partitioned by month. This is a natural option, since AWS already partitions cost and usage data by month. For example, data files are placed in an S3 folder
+with the format ```<year><startMonth>01-<year><endMonth>01```. It's recommended to use the same partition format, for example ```period='20170301-20170401'```.
+For more on Athena partitions, <a href="http://docs.aws.amazon.com/athena/latest/ug/partitions.html" target="new">read this</a>.
+
+For each partition in your Athena table, you'll have to execute the following script:
+
+```
+ALTER TABLE hourly ADD PARTITION (period='<period>') location 's3://<athena-s3-bucket>/<period>/'
+```
+
+
+**4. Execute queries against your AWS Cost and Usage data!**
+And that's it. Now you can query your AWS Cost and Usage data! You can use the sample queries in <a href="https://github.com/ConcurrenyLabs/aws-cost-analysis/blob/master/athena_queries.sql" target="new">**athena_queries.sql**</a>
 
 
 
