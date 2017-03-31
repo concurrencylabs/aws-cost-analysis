@@ -17,6 +17,8 @@ CREATE EXTERNAL TABLE IF NOT EXISTS billing.hourly (
   `lineitem_availabilityzone` string,
   `lineitem_resourceid` string,
   `lineitem_usageamount` string,
+  `lineitem_normalizationfactor` string,
+  `lineitem_normalizedusageamount` string,
   `lineitem_currencycode` string,
   `lineitem_unblendedrate` string,
   `lineitem_unblendedcost` string,

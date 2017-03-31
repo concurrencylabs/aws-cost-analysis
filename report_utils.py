@@ -13,7 +13,6 @@ itemDict = {}
 
 
 ACTION_PREPARE_ATHENA = 'prepare-athena'
-ACTION_PREPARE_QUICKSIGHT = 'prepare-quicksight'
 ACTION_CREATE_MANIFEST = 'create-manifest'
 MANIFEST_TYPE_REDSHIFT = 'redshift'
 MANIFEST_TYPE_QUICKSIGHT = 'quicksight'
@@ -54,7 +53,6 @@ def main(argv):
   if args.manifest_type: manifestType=args.manifest_type
   if args.year: year=args.year
   if args.month: month=args.month
-  if args.limit: limit=int(args.limit)
   if args.source_bucket: sourceBucket=args.source_bucket
   if args.source_prefix: sourcePrefix= args.source_prefix
   if args.dest_bucket: destBucket= args.dest_bucket
@@ -66,11 +64,8 @@ def main(argv):
 
   try:
 
-    if action in (ACTION_PREPARE_ATHENA, ACTION_PREPARE_QUICKSIGHT):
+    if action in (ACTION_PREPARE_ATHENA):
       copy_to_dest(action, sourceBucket,sourcePrefix,destBucket,destPrefix, year, month, limit)
-      if action == ACTION_PREPARE_QUICKSIGHT:
-        create_manifest(MANIFEST_TYPE_REDSHIFT, destBucket,destPrefix, year, month, limit)
-        create_manifest(MANIFEST_TYPE_QUICKSIGHT, destBucket,destPrefix, year, month, limit)
     if action == ACTION_CREATE_MANIFEST:
       create_manifest(manifestType, sourceBucket,sourcePrefix, year, month, limit)
 
@@ -84,14 +79,14 @@ def main(argv):
 """
 This method copies AWS Cost and Usage report files to an S3 bucket, where they will
 be used by either Athena or QuickSight. There are file preparation activities that
-need to take place before reports can be used by Athena or QuickSight.
+need to take place before reports can be used by Athena.
 
 For example:
 - Manifest files must not be included in S3 Athena bucket.
-- No folders must not exist underneath partition folders for Athena (i.e. 20170201-20170301)
-- There needs to be deduplication of records across multiple files
+- No folders must exist underneath partition folders for Athena (i.e. 20170201-20170301)
 - First row needs to be removed for Athena
-- QuickSight manifest needs to be created
+- Create Athena files in Reduced Redundancy storage class.
+- Define user-metadata that includes the report ID (folder AWS creates when it generates new Cost and Usage reports)
 """
 
 
@@ -101,45 +96,77 @@ def copy_to_dest(action, sourceBucket,sourcePrefix,destBucket,destPrefix, year, 
   sourcePrefix += period_prefix
   destPrefix += period_prefix
 
-  response = s3client.list_objects_v2(Bucket=sourceBucket,Prefix=sourcePrefix, MaxKeys=limit)
+  report_keys = get_latest_report_keys(sourceBucket,sourcePrefix)
 
-  if not os.path.isdir(os.getcwd()+'/tmp'): os.mkdir(os.getcwd()+'/tmp')
+  #Get content for all report files
+  for rk in report_keys:
+    tokens = rk.split("/")
+    hash = tokens[len(tokens)-2]
+    response = s3client.get_object(Bucket=sourceBucket, Key=rk)
+    tmpLocalKey = os.getcwd()+'/tmp/tmp_'+rk.replace("/","-")+'.csv.gz'
+    finalLocalKey = os.getcwd()+'/tmp/'+hash+'.csv.gz'
 
-  for o in response['Contents']:
-      bkey = o['Key']
-      #Ignore manifest files
-      if '.csv.gz' in bkey:
-        tokens = bkey.split("/")
-        hash = tokens[len(tokens)-2]
-        zipfile  = tokens[len(tokens)-1]
-        #athkey = bkey.replace(billingPrefix,athenaPrefix,1)
-        #Remove hash folder from object keys
-        destkey = bkey.replace(sourcePrefix,destPrefix,1).replace(hash+"/"+zipfile,hash+"-"+zipfile,1)
-        tmpKey = os.getcwd()+'/tmp/tmp_'+hash+'.csv.gz'
-        finalKey = os.getcwd()+'/tmp/'+hash+'.csv.gz'
-        with open(tmpKey, 'wb') as report:
-            s3resource.Bucket(sourceBucket).download_fileobj(bkey, report)
-        try:
-            with gzip.open(tmpKey, 'rb') as f:
-                if action == ACTION_PREPARE_ATHENA: f.next()#skips first line for Athena files
-                record_count = 0
-                with gzip.open(finalKey,'wb') as no_header:
-                    for line in f:
-                        tokens = line.split(",")
-                        #key consists of: identity/LineItemId+identity/TimeInterval+bill/PayerAccountId+lineItem/ProductCode+lineItem/UsageType+lineItem/Operation+lineItem/ResourceId
-                        itemKey = tokens[0]+tokens[1]+tokens[5]+tokens[12]+tokens[13]+tokens[14]+tokens[16]
-                        #print("itemKey:[{}]".format(itemKey))
-                        #AWS often produces duplicate records in different files. Therefore it's necessary to validate for uniqueness
-                        if itemKey not in itemDict:
-                            no_header.write(line)
-                            itemDict[itemKey]=True
-                            record_count = record_count + 1
+    #Download latest report as a tmp local file
+    with open(tmpLocalKey, 'wb') as report:
+        s3resource.Bucket(sourceBucket).download_fileobj(rk, report)
 
-                if record_count:
-                    print("Putting: [{}/{}] in [{}/{}]".format(sourceBucket,bkey,destBucket,destkey))
-                    s3resource.Object(destBucket,destkey).upload_file(finalKey)
-        except Exception as e:
-            print str(e)
+    #Read through the tmp local file and skip first line (for Athena)
+    with gzip.open(tmpLocalKey, 'rb') as f:
+        if action == ACTION_PREPARE_ATHENA: f.next()#skips first line for Athena files
+        record_count = 0
+        #Write contents to another tmp file, which will be uploaded to S3
+        with gzip.open(finalLocalKey,'wb') as no_header:
+            for line in f:
+                no_header.write(line)
+                record_count = record_count + 1
+
+        if record_count:
+            finalS3Key = destPrefix + "cost-and-usage-athena.csv.gz"
+            print "Putting: [{}/{}] in [{}/{}]".format(sourceBucket,rk,destBucket,finalS3Key)
+            print "Number of records: [{}]".format(record_count)
+            with open(finalLocalKey, 'rb') as data:
+                s3client.upload_fileobj(data, destBucket, finalS3Key,
+                                        ExtraArgs={
+                                            'Metadata':{'reportId':hash},
+                                            'StorageClass':'REDUCED_REDUNDANCY'
+                                        })
+
+
+
+
+def get_latest_report_keys(sourceBucket,sourcePrefix):
+    result = []
+
+    print "Getting report keys for bucket:[{}] - prefix:[{}]".format(sourceBucket,sourcePrefix)
+
+    try:
+        response = s3client.list_objects_v2(Bucket=sourceBucket,Prefix=sourcePrefix)
+    except Exception as e:
+        print "There was a problem listing objects for bucket:[{}] and prefix [{}]".format(sourceBucket, sourcePrefix)
+        print e.message
+    #First, get the latest manifest
+    manifest_key = ''
+    if 'Contents' in response:
+        for o in response['Contents']:
+            key = o['Key']
+            if 'Manifest.json' in key:
+                manifest_key = key
+                break
+    try:
+        response = s3client.get_object(Bucket=sourceBucket, Key=manifest_key)
+    except Exception as e:
+        print "There was a problem getting object - bucket:[{}] - key [{}]".format(sourceBucket, manifest_key)
+        print e.message
+
+
+    if 'Body' in response:
+        manifest_json = json.loads(response['Body'].read())
+        if 'reportKeys' in manifest_json:
+            result = manifest_json['reportKeys']
+
+    print "Latest Cost and Usage report keys: [{}]".format(result)
+    return result
+
 
 
 
@@ -150,26 +177,24 @@ def create_manifest(type, sourceBucket,sourcePrefix, year, month, limit):
   if year and month:monthly_report_prefix = get_period_prefix(year, month)
 
   manifest = {}
-  entries = []
-  response = s3client.list_objects_v2(Bucket=sourceBucket,Prefix=sourcePrefix+monthly_report_prefix, MaxKeys=limit)
 
-  contents = []
+  report_keys = get_latest_report_keys(sourceBucket,sourcePrefix+monthly_report_prefix)
+
+  entries = []
   uris = []
-  if 'Contents' in response: contents = response['Contents']
-  for obj in contents:
-      bkey = obj['Key']
+  for key in report_keys:
       #TODO: manifest cannot point to more than 1000 files (add validation)
-      if '.csv' in bkey:
-        uris.append("s3://"+sourceBucket+"/"+bkey)
-        if type == MANIFEST_TYPE_REDSHIFT:
-          entries.append({"url":"s3://"+sourceBucket+"/"+bkey,"mandatory":True})
-        if len(entries) == limit: break
+    uris.append("s3://"+sourceBucket+"/"+key)
+    if type == MANIFEST_TYPE_REDSHIFT:
+      entries.append({"url":"s3://"+sourceBucket+"/"+key,"mandatory":True})
+    if len(entries) == limit: break
 
 
   manifest_file_name = ""
   if type == MANIFEST_TYPE_REDSHIFT:
       manifest['entries']=entries
       manifest_file_name = "billing-redshift-manifest-concurrencylabs.json"
+
 
   if type == MANIFEST_TYPE_QUICKSIGHT:
       manifest['fileLocations']=[{"URIs":uris}]
@@ -179,11 +204,17 @@ def create_manifest(type, sourceBucket,sourcePrefix, year, month, limit):
 
   manifest_body = json.dumps(manifest,indent=4,sort_keys=False)
   print("Manifest: ["+manifest_body+"]")
-  print "Number of files in manifest: [{}]".format(len(uris))
+  record_count = 0
+  if len(uris):record_count = uris
+  if len(entries):record_count = entries
+  print "Number of files in manifest: [{}]".format(record_count)
 
   manifest_key = sourcePrefix+monthly_report_prefix+manifest_file_name
-  s3client.put_object(Bucket=sourceBucket,Key=manifest_key,ACL='public-read',Body=manifest_body)
-  print "Manifest S3 URL: [https://s3.amazonaws.com/{}/{}]".format(sourceBucket,manifest_key)
+  if record_count:
+    s3client.put_object(Bucket=sourceBucket,Key=manifest_key,ACL='private',Body=manifest_body)
+    print "Manifest S3 URL (this is the URL you provide in QuickSight to create a data source): [https://s3.amazonaws.com/{}/{}]".format(sourceBucket,manifest_key)
+  else:
+    print "No entries found - did not write manifest"
 
 
 
@@ -195,23 +226,25 @@ def get_period_prefix(year, month):
 
 def validate(action, sourceBucket,sourcePrefix, destBucket, destPrefix, limit):
 
-    valid_actions = [ACTION_PREPARE_ATHENA, ACTION_PREPARE_QUICKSIGHT, ACTION_CREATE_MANIFEST]
+    valid_actions = [ACTION_PREPARE_ATHENA, ACTION_CREATE_MANIFEST]
     message = ""
     validation_ok = True
 
     #TODO:dest bucket and dest prefix are mandatory if action is about preparing reports
-    #TODO:dest bucket must be different than origin bucket
-    #TODO:dest bucket + prefix cannot be the same as origin!!!
     #TODO:partition bucket cannot be different for origin and destination
 
     if action not in valid_actions:
         validation_ok = False
         message += "Invalid action, valid options are: {}".format(valid_actions)
 
-    if action in (ACTION_PREPARE_ATHENA, ACTION_PREPARE_QUICKSIGHT):
+    if action in (ACTION_PREPARE_ATHENA):
         if not utils.is_valid_prefix(destPrefix):
             validation_ok = False
             message += "Invalid Destination S3 Bucket prefix: [{}]".format(destPrefix)
+
+    if (sourceBucket+sourcePrefix)==(destBucket+destPrefix):
+        validation_ok = False
+        message += "Source and destination locations cannot be the same\n"
 
     if not (limit >= 1 and limit <= 1000):
         validation_ok = False

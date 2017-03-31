@@ -1,8 +1,4 @@
 
-/* Add all partitions at once */
-MSCK REPAIR TABLE hourly
-
-
 
 /* Add individual Partition  - make sure that table is created with partition=period */
 ALTER TABLE hourly ADD PARTITION (period='<period>') location 's3://<athena-s3-bucket>/<period>/'

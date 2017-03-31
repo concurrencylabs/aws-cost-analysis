@@ -16,8 +16,8 @@ The repo contains the following files:
 ### report_utils.py
 
 This module implements operations that are required to prepare AWS Cost and Usage data before it can
-be analyzed using AWS Athena or AWS QuickSight. It copies data from the Cost and Usage Reports S3 bucket (source)
-into a separate S3 Bucket, where they can be queried by Athena, or loaded onto QuickSight.
+be analyzed using AWS Athena. It copies data from the Cost and Usage Reports S3 bucket (source)
+into a separate S3 Bucket, where they can be queried by Athena.
 
 The script performs the following operations:
 
@@ -27,14 +27,12 @@ The script performs the following operations:
   * Place files in Athena S3 bucket using a partition that corresponds to the report date:
            <aws-cost-usage-bucket>/<prefix>/><period>/<csv-file>.
   * Remove 'hash' folder from the object key structure that is used in the Athena S3 bucket. AWS Cost and Usage creates
-           files with the following structure: <aws-cost-usage-bucket>/<prefix>/<period>/<hash>/<csv-file>. This script removes the 'hash' folder, since
+           files with the following structure: <aws-cost-usage-bucket>/<prefix>/<period>/<reportID-hash>/<csv-file>. This script removes the 'hash' folder, since
            it interferes with Athena partitions.
   * Remove first row in every single file. For some reason, Athena ignores OpenCSVSerde's option to skip first rows.
-  * De-duplicate records. AWS often generates duplicate records across different files. The script makes sure that
-    only unique records are stored in the destination S3 bucket.
 
 
-It is recommended that you execute this script from an EC2 instance in the same region as the S3 buckets
+If you have large Cost and Usage reports, it is recommended that you execute this script from an EC2 instance in the same region as the S3 buckets
 where you have the AWS Cost and Usage Reports as well as the destination Athena S3 bucket. This
 way you won't pay data transfer cost out of S3 and out of the EC2 instance into S3. You will also get
 much better performance when transferring data. 
@@ -126,7 +124,7 @@ There are 4 different operations available:
 **Prepare files for Athena **
 
 This operation copies files from a destination S3 bucket and prepare the files so they
-can be queried using Athena (de-duplication, remove manifest files, etc.)
+can be queried using Athena (remove reportId hash, remove manifest files, etc.)
 
 ```
 python report_utils.py --action=prepare-athena --source-bucket=<s3-bucket-with-cost-usage-reports> --source-prefix=<folder>/ --dest-bucket=<s3-bucket-for-athena-files> --dest-prefix=<folder>/ --year=<year-in-4-digits> --month=<month-in-1-or-2-digits>
@@ -135,19 +133,12 @@ python report_utils.py --action=prepare-athena --source-bucket=<s3-bucket-with-c
 Keep in mind that AWS creates Cost and Usage files daily, therefore you must execute this
 script if you want to have the latest billing data in Athena.  
 
-**Prepare files for QuickSight **
-
-Same as Athena, except file headers must be kept.
-
-```
-python report_utils.py --action=prepare-quicksight --source-bucket=<s3-bucket-with-cost-usage-reports> --source-prefix=<folder>/ --dest-bucket=<s3-bucket-for-athena-files> --dest-prefix=<folder>/ --year=<year-in-4-digits> --month=<month-in-1-or-2-digits>
-```
 
 **Prepare QuickSight manifest**
 
 If you want to upload files to QuickSight, you must provide a manifest file. The manifest file essentially
 lists the location of the data files, so QuickSight can find them and load them. In this case, the source-bucket parameter
-is the S3 bucket that contains files that are ready to be loaded.
+is the S3 bucket where AWS puts Cost and Usage reports.
 
 ```
 python report_utils.py --source-bucket=<s3-bucket-for-quicksight-files> --source-prefix=<folder>/ --action=create-manifest --manifest-type=quicksight --year=2017 --month=3
@@ -161,9 +152,6 @@ As a bonus, if you want to upload files in QuickSight using a Redshift manifest,
 python report_utils.py --source-bucket=<s3-bucket-for-quicksight-files> --source-prefix=<folder>/ --action=create-manifest --manifest-type=redshift --year=2017 --month=3
 ```
 
-Tip: if you will be copying large amounts of data, it is recommended to run this script from an EC2
-instance located in the same region as your S3 buckets. This way you won't pay for data
-transfer cost out to the internet.
 
 
 ## Example: Using Athena for AWS Cost and Usage report analysis
