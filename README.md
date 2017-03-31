@@ -25,10 +25,10 @@ The script performs the following operations:
   * Athena doesn't like manifest files or anything that is not a data file, therefore this script only
       copies .csv files to the destination S3 bucket.
   * Place files in Athena S3 bucket using a partition that corresponds to the report date:
-           <aws-cost-usage-bucket>/<prefix>/><period>/<csv-file>.
+           {aws-cost-usage-bucket}/{prefix}/{period}/{csv-file}.
   * Remove 'hash' folder from the object key structure that is used in the Athena S3 bucket. AWS Cost and Usage creates
-           files with the following structure: <aws-cost-usage-bucket>/<prefix>/<period>/<reportID-hash>/<csv-file>. This script removes the 'hash' folder, since
-           it interferes with Athena partitions.
+           files with the following structure: {aws-cost-usage-bucket}/{prefix}/{period}/{reportID-hash}/{csv-file}. This script removes the 'hash' folder when
+           copying the file to the destination S3 bucket, since it interferes with Athena partitions.
   * Remove first row in every single file. For some reason, Athena ignores OpenCSVSerde's option to skip first rows.
 
 
