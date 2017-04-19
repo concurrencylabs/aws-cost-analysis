@@ -149,10 +149,12 @@ def get_latest_report_keys(sourceBucket,sourcePrefix):
     if 'Contents' in response:
         for o in response['Contents']:
             key = o['Key']
-            if 'Manifest.json' in key:
+            post_prefix = key[key.find(sourcePrefix)+len(sourcePrefix):]
+            if '-Manifest.json' in key and post_prefix.find("/") < 0:#manifest file is at top level after prefix and not inside one of the folders
                 manifest_key = key
                 break
     try:
+        print "Getting manifest [{}]".format(manifest_key)
         response = s3client.get_object(Bucket=sourceBucket, Key=manifest_key)
     except Exception as e:
         print "There was a problem getting object - bucket:[{}] - key [{}]".format(sourceBucket, manifest_key)
@@ -256,6 +258,7 @@ def validate(action, sourceBucket,sourcePrefix, destBucket, destPrefix, limit):
 
     else:
         return validation_ok
+
 
 if __name__ == "__main__":
    main(sys.argv[1:])
