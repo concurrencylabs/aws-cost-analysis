@@ -131,7 +131,7 @@ python report_utils.py --action=prepare-athena --source-bucket=<s3-bucket-with-c
 ```
 
 Keep in mind that AWS creates Cost and Usage files daily, therefore you must execute this
-script if you want to have the latest billing data in Athena.  
+script daily if you want to have the latest billing data in Athena.  
 
 
 **Prepare QuickSight manifest**
