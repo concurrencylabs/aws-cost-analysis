@@ -1,0 +1,13 @@
+
+#this file gets uploaded to S3 and the S3 URI is a parameter in the main SAM template
+---
+Environment:
+  Variables:
+    ATHENA_BASE_OUTPUT_S3_BUCKET: "s3://<bucket-where-athena-results-are-put>"
+    CUR_PROCESSOR_DEST_S3_BUCKET: "<name-of-bucket-to-put-cost-usage-reports>"
+    CUR_PROCESSOR_DEST_S3_PREFIX: "<prefix>/"
+    AWS_ACCOUNT_METADATA_DDB_TABLE: "<name-of-ddb-table>"
+    LAMBDA_OWNER_AWS_ACCESS_KEY_ID: "<aws-iam-key-id-(only-used-in-cross-account-scenarios)>"
+    LAMBDA_OWNER_AWS_SECRET_ACCESS_KEY: "<secret-access-key-(only-used-in-cross-account-scenarios)>"
+    STEP_FUNCTION_PREPARE_CUR_ATHENA: "<arn-of-step-function>"
+    SNS_TOPIC: "<arn-of-sns-topic-to-send-notifications-to>"

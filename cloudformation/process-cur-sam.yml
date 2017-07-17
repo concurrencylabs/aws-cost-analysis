@@ -1,0 +1,154 @@
+AWSTemplateFormatVersion : '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Processes incoming AWS Cost and Usage Reports and gets them ready for analysis in Athena and QuickSight
+Parameters:
+  EnvConfigFileS3Uri:
+    Description: "Location of the YAML file that contains the environment variables used by all functions. Must be in the format s3://<bucket>/<dir>/<dir>/<file-name.yml>. See example in config/example/env-variables.yml"
+    Type: String
+
+Resources:
+
+  xAcctStepFunctionStarter:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: functions/xacct-step-function-starter.handler
+      Runtime: python2.7
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - AWSStepFunctionsFullAccess
+        - AmazonSNSFullAccess
+        - AmazonS3FullAccess
+        - AmazonDynamoDBFullAccess
+        - PolicyDocument:
+            Statement:
+            - Action:
+              - 'iam:PassRole'
+              - 'iam:AssumeRole'
+              Effect: Allow
+              Resource:
+              - '*'
+            Version: '2012-10-17'
+          PolicyName: AssumeRolePolicy
+
+      Timeout: 30
+      MemorySize: 128
+      CodeUri: ../
+      Events:
+        Timer:
+          Type: Schedule
+          Properties:
+            Schedule: rate(1 minute)
+      Fn::Transform:
+        Name: AWS::Include
+        Parameters:
+          Location : !Ref EnvConfigFileS3Uri
+      Tags:
+        stack: cur-processor
+
+  S3EventStepFunctionStarter:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: functions/s3event-step-function-starter.handler
+      Runtime: python2.7
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - AWSStepFunctionsFullAccess
+        - AmazonSNSFullAccess
+        - AmazonS3FullAccess
+      Timeout: 30
+      MemorySize: 128
+      CodeUri: ../
+      Fn::Transform:
+        Name: AWS::Include
+        Parameters:
+          Location : !Ref EnvConfigFileS3Uri
+      Tags:
+        stack: cur-processor
+
+  ProcessCostUsageFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: functions/process-cur.handler
+      Runtime: python2.7
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - AmazonS3FullAccess
+      Timeout: 300
+      MemorySize: 1536
+      CodeUri: ../
+      Fn::Transform:
+        Name: AWS::Include
+        Parameters:
+          Location : !Ref EnvConfigFileS3Uri
+      Tags:
+        stack: cur-processor
+
+  CreateAthenaResourcesFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: functions/create-athena-resources.handler
+      Runtime: python2.7
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - AmazonS3FullAccess
+        - AmazonAthenaFullAccess
+        - AmazonDynamoDBFullAccess
+      Timeout: 300
+      MemorySize: 1536
+      CodeUri: ../
+      Fn::Transform:
+        Name: AWS::Include
+        Parameters:
+          Location : !Ref EnvConfigFileS3Uri
+      Tags:
+        stack: cur-processor
+
+  InitializeAthenaQueriesFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: functions/init-athena-queries.handler
+      Runtime: python2.7
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - AmazonS3FullAccess
+        - AmazonAthenaFullAccess
+        - AmazonDynamoDBFullAccess
+      Timeout: 300
+      MemorySize: 1536
+      CodeUri: ../
+      Fn::Transform:
+        Name: AWS::Include
+        Parameters:
+          Location : !Ref EnvConfigFileS3Uri
+      Tags:
+        stack: cur-processor
+
+  UpdateMetadataFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: functions/update-metadata.handler
+      Runtime: python2.7
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - AmazonDynamoDBFullAccess
+      Timeout: 30
+      MemorySize: 256
+      CodeUri: ../
+      Fn::Transform:
+        Name: AWS::Include
+        Parameters:
+          Location : !Ref EnvConfigFileS3Uri
+      Tags:
+        stack: cur-processor
+
+  AWSAccountMetadata:
+    Type: AWS::Serverless::SimpleTable
+    Properties:
+      PrimaryKey:
+        Name: awsPayerAccountId
+        Type: String
+      ProvisionedThroughput:
+        ReadCapacityUnits: 5
+        WriteCapacityUnits: 5
+
+

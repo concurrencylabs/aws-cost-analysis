@@ -98,7 +98,6 @@ This view is not available in AWS Cost Explorer
 SELECT lineitem_productcode, lineitem_resourceId
 FROM billing.hourly
 WHERE lineitem_resourceId <> ''
-
 group by lineitem_productcode, lineitem_resourceId
 order by lineitem_productcode
 

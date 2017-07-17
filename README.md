@@ -13,22 +13,24 @@ https://www.concurrencylabs.com/blog/aws-cost-reduction-athena
 
 The repo contains the following files:
 
-### report_utils.py
 
-This module implements operations that are required to prepare AWS Cost and Usage data before it can
-be analyzed using AWS Athena. It copies data from the Cost and Usage Reports S3 bucket (source)
-into a separate S3 Bucket, where they can be queried by Athena.
+### awscostusageprocessor
 
-The script performs the following operations:
+The modules in this package execute a number of operations that are required
+in order to analyze Cost and Usage report files by Athena or QuickSight.
+
+**processor.py**
+
+Performs the following operations:
 
 * Execute required data preparations before putting files in an S3 bucket that will be queried by Athena.
-  * Athena doesn't like manifest files or anything that is not a data file, therefore this script only
+  * Athena doesn't like manifest files or anything that is not a data file, therefore this module only
       copies .csv files to the destination S3 bucket.
   * Place files in Athena S3 bucket using a partition that corresponds to the report date:
            {aws-cost-usage-bucket}/{prefix}/{period}/{csv-file}.
   * Remove 'hash' folder from the object key structure that is used in the Athena S3 bucket. AWS Cost and Usage creates
-           files with the following structure: {aws-cost-usage-bucket}/{prefix}/{period}/{reportID-hash}/{csv-file}. This script removes the 'hash' folder when
-           copying the file to the destination S3 bucket, since it interferes with Athena partitions.
+           files with the following structure: {aws-cost-usage-bucket}/{prefix}/{period}/{reportID-hash}/{csv-file}.
+           This implementation removes the 'hash' folder when copying the file to the destination S3 bucket, since it interferes with Athena partitions.
   * Remove first row in every single file. For some reason, Athena ignores OpenCSVSerde's option to skip first rows.
 
 
@@ -37,27 +39,15 @@ where you have the AWS Cost and Usage Reports as well as the destination Athena 
 way you won't pay data transfer cost out of S3 and out of the EC2 instance into S3. You will also get
 much better performance when transferring data. 
 
-If you run this script outside of an EC2 instance, you will incur in data transfer costs from S3 out to the internet.
+If you run this processes outside of an EC2 instance, you will incur in data transfer costs from S3 out to the internet.
 
 
-### create_athena_table.sql
+### Scripts
 
-This file contains the SQL statement to create an Athena table. Make sure you update the ```LOCATION``` statement with the S3 bucket where you've
-placed the Athena files.
+**report_utils.py**
 
-After you run the CREATE TABLE statement, you'll have to run the following for each partition in your dataset:
-
-```
-ALTER TABLE hourly ADD PARTITION (period='<period>') location 's3://<athena-s3-bucket>/<period>/'
-```
-
-
-
-### athena_queries.sql
-
-Contains a list of SQL queries you can use to find relevant cost and usage information in the Athena table. 
-It's recommended that you filter by partition, in order to avoid querying the whole database.
-This will result in better performance and lower Athena cost.
+This script instantiates class CostUsageProcessor, which executes the operations in 
+`awscostusageprocessor/processor.py`
 
 
 ## Installation Instructions
@@ -111,10 +101,16 @@ place the modified Cost and Usage files.
 
 **3. Setting environment variables**
 
-Before executing any script, make sure the following environment variables are set, which are required by Boto:
+Before executing any script, make sure the following environment variables are set:
 
 ```export AWS_DEFAULT_PROFILE=<my-aws-default-credentials-profile>```
 ```export AWS_DEFAULT_REGION=<us-east-1,eu-west-1, etc.>```
+
+
+```export ATHENA_BASE_OUTPUT_S3_BUCKET=s3://<bucket-where-athena-results-are-put>```
+```export CUR_PROCESSOR_DEST_S3_BUCKET=<name-of-bucket-to-put-cost-usage-reports>```
+```export CUR_PROCESSOR_DEST_S3_PREFIX=<prefix>```
+
 
 
 ### 3. Executing the scripts
@@ -123,7 +119,7 @@ There are 4 different operations available:
 
 **Prepare files for Athena **
 
-This operation copies files from a destination S3 bucket and prepare the files so they
+This operation copies files from a destination S3 bucket and prepares the files so they
 can be queried using Athena (remove reportId hash, remove manifest files, etc.)
 
 ```
@@ -165,7 +161,7 @@ python report_utils.py --source-bucket=<s3-bucket-for-quicksight-files> --source
 python report_utils.py --action=prepare-athena --source-bucket=<s3-bucket-with-cost-usage-reports> --source-prefix=<folder>/ --dest-bucket=<s3-bucket-for-athena-files> --dest-prefix=<folder>/ --year=<year-in-4-digits> --month=<month-in-1-or-2-digits>
 ```
 
-**3. Create Athena database and table**
+**3. Create Athena database**
 
 Once your cleaned-up files are in S3, you need to have an Athena database. You can create one from the Athena console by running a SQL statement:
 
@@ -176,22 +172,58 @@ CREATE DATABASE billing;
 You can use an existing database if you want, that's up to you. For this example we'll use a new database named 'billing'.
 
 The next step is to create an Athena table. You can do this by running the statement in <a href="https://github.com/ConcurrenyLabs/aws-cost-analysis/blob/master/create_athena_table.sql" target="new">**create_athena_table.sql**</a> from the Athena console.
- 
-Note this Athena table is partitioned by month. This is a natural option, since AWS already partitions cost and usage data by month. For example, data files are placed in an S3 folder
-with the format ```<year><startMonth>01-<year><endMonth>01```. It's recommended to use the same partition format, for example ```period='20170301-20170401'```.
-For more on Athena partitions, <a href="http://docs.aws.amazon.com/athena/latest/ug/partitions.html" target="new">read this</a>.
+We'll create one table per month. 
 
-For each partition in your Athena table, you'll have to execute the following script:
+Make sure you update the following parameters with actual values:
 
-```
-ALTER TABLE hourly ADD PARTITION (period='<period>') location 's3://<athena-s3-bucket>/<period>/'
-```
+* {dbname}
+* {tablename}
+* {bucket}
+* {prefix}
 
 
 **4. Execute queries against your AWS Cost and Usage data!**
-And that's it. Now you can query your AWS Cost and Usage data! You can use the sample queries in <a href="https://github.com/ConcurrenyLabs/aws-cost-analysis/blob/master/athena_queries.sql" target="new">**athena_queries.sql**</a>
+That's it! Now you can query your AWS Cost and Usage data! You can use the sample queries in <a href="https://github.com/ConcurrenyLabs/aws-cost-analysis/blob/master/athena_queries.sql" target="new">**athena_queries.sql**</a>
 
 
 
+### Serverless Application Model Stack(optional)
 
+This repo also has a number of Lambda functions designed to automate the
+daily processing of Cost and Usage reports for Athena. These functions can
+be orchestrated by an AWS Step Functions State Machine.
+
+Under the `functions` folder:
+
+**process-cur.py**
+Starts the process that copies and prepares incoming AWS Cost and Usage reports.
+
+**create-athena-resources.py**
+Creates Athena databases and tables based on incoming AWS Cost and Usage reports
+
+**init-athena-queries.py**
+Initializes common queries, so the results are available in S3. This 
+increases performance and reduces cost.
+
+**update-metadata.py**
+Updates a DDB table with the latest execution timestamp. This
+information is used by:
+
+- The processes that decide whether to query from Athena or from S3.
+- Step Function starter, in order to decide if a new execution should be triggered.
+- Any application that consumes Cost and Usage data and needs to know when a new report has been processed
+
+**s3event-step-function-starter.py**
+This function receives an S3 PUT event when a new AWS Cost and Usage
+report is generated and it then starts the Step Function workflow. You'll
+have to manually configure the S3 event so it points to this function.
+
+**step-function-athena.json**
+Step Function definition to automate the daily processing of CUR files and
+creation of Athena resources.
+
+Under the `cloudformation` folder:
+
+**cloudformation/process-cur-sam.yml**
+Serverless Application Model definition to deploy all Lambda functions
 

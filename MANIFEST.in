@@ -1,0 +1,2 @@
+include awscostusageprocessor/sql/queries.properties
+

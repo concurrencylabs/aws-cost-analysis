@@ -1,0 +1,29 @@
+{
+  "Comment": "Process AWS Cost and Usage reports and prepare them for Athena.",
+  "StartAt": "ProcessCostUsageReport",
+  "States": {
+    "ProcessCostUsageReport": {
+      "Type": "Task",
+      "Resource": "<ARN of process-cur function>",
+      "Next": "CreateAthenaResources"
+    },
+    "CreateAthenaResources": {
+      "Type": "Task",
+      "Resource": "<ARN of create-athena-resources function>",
+      "Next": "UpdateMetadata"
+    },
+
+    "UpdateMetadata": {
+      "Type" : "Task",
+      "Resource": "<ARN of update-metadata function>",
+      "Next": "InitializeAthenaQueries"
+    },
+
+    "InitializeAthenaQueries": {
+      "Type" : "Task",
+      "Resource": "<ARN of init-athena-queries function>",
+      "End": true
+    }
+
+  }
+}
