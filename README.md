@@ -108,14 +108,6 @@ Before executing any script, make sure the following environment variables are s
 ```export AWS_DEFAULT_REGION=<us-east-1,eu-west-1, etc.>```
 
 
-```export ATHENA_BASE_OUTPUT_S3_BUCKET=s3://<bucket-where-athena-results-are-put>```
-
-```export CUR_PROCESSOR_DEST_S3_BUCKET=<name-of-bucket-to-put-cost-usage-reports>```
-
-```export CUR_PROCESSOR_DEST_S3_PREFIX=<prefix-where-cost-usage-reports-will-be-put>/```
-
-
-
 ### 3. Executing the scripts
 
 Go to the ```scripts``` folder.
@@ -128,7 +120,7 @@ This operation copies files from a destination S3 bucket and prepares the files 
 can be queried using Athena (remove reportId hash, remove manifest files, etc.)
 
 ```
-python report_utils.py --action=prepare-athena --source-bucket=<s3-bucket-with-cost-usage-reports> --source-prefix=<folder>/ --year=<year-in-4-digits> --month=<month-in-1-or-2-digits>
+python report_utils.py --action=prepare-athena --source-bucket=<s3-bucket-with-cost-usage-reports> --source-prefix=<folder>/ --dest-bucket=<s3-bucket-athena-will-read-files-from> --dest-prefix=<folder>/ --year=<year-in-4-digits> --month=<month-in-1-or-2-digits>
 ```
 
 Keep in mind that AWS creates Cost and Usage files daily, therefore you must execute this
@@ -169,7 +161,7 @@ python report_utils.py --source-bucket=<s3-bucket-for-quicksight-files> --source
 **2. Prepare AWS Cost and Usage data for Athena**
 
 ```
-python report_utils.py --action=prepare-athena --source-bucket=<s3-bucket-with-cost-usage-reports> --source-prefix=<folder>/ --dest-bucket=<s3-bucket-for-athena-files> --dest-prefix=<folder>/ --year=<year-in-4-digits> --month=<month-in-1-or-2-digits>
+python report_utils.py --action=prepare-athena --source-bucket=<s3-bucket-with-cost-usage-reports> --source-prefix=<folder>/ --dest-bucket=<s3-bucket-athena-will-read-files-from> --dest-prefix=<folder>/ --year=<year-in-4-digits> --month=<month-in-1-or-2-digits>
 ```
 
 **3. Create Athena database**
