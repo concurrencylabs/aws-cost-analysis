@@ -1,11 +1,4 @@
 
-
-/* Add individual Partition  - make sure that table is created with partition=period */
-ALTER TABLE hourly ADD PARTITION (period='<period>') location 's3://<athena-s3-bucket>/<period>/'
-
-/* List all the partitions */
-SHOW PARTITIONS billing.hourly
-
 /* Make sure the table has been created successfully */
 select * from hourly limit 10
 

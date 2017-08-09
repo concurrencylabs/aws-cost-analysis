@@ -107,7 +107,6 @@ CREATE EXTERNAL TABLE IF NOT EXISTS {dbname}.{tablename} (
   `resourcetags_aws_createdby` string
 )
 
---PARTITIONED BY (period string)
 
 ROW FORMAT SERDE 'org.apache.hadoop.hive.serde2.OpenCSVSerde'
 WITH SERDEPROPERTIES (

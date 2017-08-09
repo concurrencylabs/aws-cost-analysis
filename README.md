@@ -44,7 +44,7 @@ If you run this processes outside of an EC2 instance, you will incur in data tra
 
 ### Scripts
 
-**report_utils.py**
+**scripts/report_utils.py**
 
 This script instantiates class CostUsageProcessor, which executes the operations in 
 `awscostusageprocessor/processor.py`
@@ -104,18 +104,23 @@ place the modified Cost and Usage files.
 Before executing any script, make sure the following environment variables are set:
 
 ```export AWS_DEFAULT_PROFILE=<my-aws-default-credentials-profile>```
+
 ```export AWS_DEFAULT_REGION=<us-east-1,eu-west-1, etc.>```
 
 
 ```export ATHENA_BASE_OUTPUT_S3_BUCKET=s3://<bucket-where-athena-results-are-put>```
+
 ```export CUR_PROCESSOR_DEST_S3_BUCKET=<name-of-bucket-to-put-cost-usage-reports>```
-```export CUR_PROCESSOR_DEST_S3_PREFIX=<prefix>```
+
+```export CUR_PROCESSOR_DEST_S3_PREFIX=<prefix-where-cost-usage-reports-will-be-put>/```
 
 
 
 ### 3. Executing the scripts
 
-There are 4 different operations available:
+Go to the ```scripts``` folder.
+
+There are 3 different operations available:
 
 **Prepare files for Athena **
 
@@ -123,7 +128,7 @@ This operation copies files from a destination S3 bucket and prepares the files 
 can be queried using Athena (remove reportId hash, remove manifest files, etc.)
 
 ```
-python report_utils.py --action=prepare-athena --source-bucket=<s3-bucket-with-cost-usage-reports> --source-prefix=<folder>/ --dest-bucket=<s3-bucket-for-athena-files> --dest-prefix=<folder>/ --year=<year-in-4-digits> --month=<month-in-1-or-2-digits>
+python report_utils.py --action=prepare-athena --source-bucket=<s3-bucket-with-cost-usage-reports> --source-prefix=<folder>/ --year=<year-in-4-digits> --month=<month-in-1-or-2-digits>
 ```
 
 Keep in mind that AWS creates Cost and Usage files daily, therefore you must execute this
@@ -132,12 +137,18 @@ script daily if you want to have the latest billing data in Athena.
 
 **Prepare QuickSight manifest**
 
+
 If you want to upload files to QuickSight, you must provide a manifest file. The manifest file essentially
-lists the location of the data files, so QuickSight can find them and load them. In this case, the source-bucket parameter
-is the S3 bucket where AWS puts Cost and Usage reports.
+lists the location of the data files, so QuickSight can find them and load them. The source-bucket and source-prefix parameter
+indicate the S3 location of the Cost and Usage reports that will be used to create the QuickSight manifest.
+
+AWS gives you the option to create QuickSight manifests when you configure Cost and Usage reports in the Billing console. One issue is that
+AWS creates the QuickSight manifest only at the end of the month. That's why I added this option in the script, so you can generate a QuickSight
+manifest anytime you want.
+
 
 ```
-python report_utils.py --source-bucket=<s3-bucket-for-quicksight-files> --source-prefix=<folder>/ --action=create-manifest --manifest-type=quicksight --year=2017 --month=3
+python report_utils.py --source-bucket=<s3-bucket-for-quicksight-files> --source-prefix=<folder>/ --action=create-manifest --manifest-type=quicksight --year=<year-in-4-digits> --month=<month-in-1-or-2-digits>
 ```
 
 **Prepare Redshift manifest**
@@ -145,7 +156,7 @@ python report_utils.py --source-bucket=<s3-bucket-for-quicksight-files> --source
 As a bonus, if you want to upload files in QuickSight using a Redshift manifest, the script creates one for you.
 
 ```
-python report_utils.py --source-bucket=<s3-bucket-for-quicksight-files> --source-prefix=<folder>/ --action=create-manifest --manifest-type=redshift --year=2017 --month=3
+python report_utils.py --source-bucket=<s3-bucket-for-quicksight-files> --source-prefix=<folder>/ --action=create-manifest --manifest-type=redshift --year=<year-in-4-digits> --month=<month-in-1-or-2-digits>
 ```
 
 
@@ -171,7 +182,7 @@ CREATE DATABASE billing;
 
 You can use an existing database if you want, that's up to you. For this example we'll use a new database named 'billing'.
 
-The next step is to create an Athena table. You can do this by running the statement in <a href="https://github.com/ConcurrenyLabs/aws-cost-analysis/blob/master/create_athena_table.sql" target="new">**create_athena_table.sql**</a> from the Athena console.
+The next step is to create an Athena table. You can do this by running the statement in <a href="https://github.com/ConcurrenyLabs/aws-cost-analysis/blob/master/awscostusageprocessor/sql/create_athena_table.sql" target="new">**create_athena_table.sql**</a> from the Athena console.
 We'll create one table per month. 
 
 Make sure you update the following parameters with actual values:
@@ -183,11 +194,11 @@ Make sure you update the following parameters with actual values:
 
 
 **4. Execute queries against your AWS Cost and Usage data!**
-That's it! Now you can query your AWS Cost and Usage data! You can use the sample queries in <a href="https://github.com/ConcurrenyLabs/aws-cost-analysis/blob/master/athena_queries.sql" target="new">**athena_queries.sql**</a>
+That's it! Now you can query your AWS Cost and Usage data! You can use the sample queries in <a href="https://github.com/ConcurrenyLabs/aws-cost-analysis/blob/master/awscostusageprocessor/sql/athena_queries.sql" target="new">**athena_queries.sql**</a>
 
 
 
-### Serverless Application Model Stack(optional)
+## Serverless Application Model Stack(optional)
 
 This repo also has a number of Lambda functions designed to automate the
 daily processing of Cost and Usage reports for Athena. These functions can
