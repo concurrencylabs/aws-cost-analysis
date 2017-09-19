@@ -34,17 +34,22 @@ class ApiProcessor():
         self.athena = ath.AthenaQueryMgr(consts.ATHENA_BASE_OUTPUT_S3_BUCKET, accountid, year, month)
 
     def getResultSet(self, action, **kargs):
-        result = []
+        response= {"executionId":"", "results":[]}
         sqlstatement = self.athena.replace_params(config.get('queries',action),**kargs)
         log.info("\nQuery type: {}".format(action))
         queryexecutionid, querystate = self.athena.execute_query(action, sqlstatement)
         if querystate == consts.ATHENA_QUERY_STATE_SUCCEEDED:
-            result = self.athena.get_query_execution_results(queryexecutionid)
-        return result
+            response['results'] = self.athena.get_query_execution_results(queryexecutionid)
+
+        response['executionId']=queryexecutionid
+        return response
 
     def getTotalCost(self):
         #TODO: do mapping between SQL columns and API field names that will be returned
         return self.getResultSet(consts.ACTION_GET_TOTAL_COST)
+
+    def getHourlyCost(self):
+        return self.getResultSet(consts.ACTION_GET_HOURLY_COST)
 
     def getCostByService(self):
         return self.getResultSet(consts.ACTION_GET_COST_BY_SERVICE)

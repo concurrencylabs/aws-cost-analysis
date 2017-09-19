@@ -33,10 +33,17 @@ class AthenaQueryMgr():
         self.tablename = "hourly_"+utils.get_period_prefix(year, month).replace("-","_").replace("/","")
         self.payerAccountid = accountid
 
+
     #TODO: add option to execute synchronously or asynchronously
     def execute_query(self, queryid, querystring):
         log.info("Query: {}".format(querystring))
-        runnew, queryexecutionid = self.should_run_fresh(queryid)
+
+        #Database management queries such as create database, create table or drop table should always execute fresh
+        if queryid in (consts.QUERY_ID_CREATE_DATABASE, consts.QUERY_ID_DROP_TABLE, consts.QUERY_ID_CREATE_TABLE):
+            runnew = True
+        else:
+            runnew, queryexecutionid = self.should_run_fresh(queryid)
+
         querystate = ''
         if runnew:
             log.info("Running fresh Athena query")
@@ -71,7 +78,7 @@ class AthenaQueryMgr():
             lastProcessedTimestamp = datetime.datetime.strptime(item['lastProcessedTimestamp']['S'], consts.TIMESTAMP_FORMAT)
 
 
-        #get latest execution timestamp, based on the query id and accountid
+        #get latest execution timestamp from S3, based on the query id and accountid
         bucket = self.get_athena_query_output_s3_bucket()
         key = self.get_athena_query_output_s3_key(bucket, queryid)
         querymetadatabody = {}
@@ -110,7 +117,7 @@ class AthenaQueryMgr():
             if querystate == consts.ATHENA_QUERY_STATE_FAILED:
                 if 'StateChangeReason' in queryexecution['QueryExecution']['Status']:
                     querystatereason = queryexecution['QueryExecution']['Status']['StateChangeReason']
-                    log.info("querystate:{} - reason:{}".format(querystate, querystatereason ))
+                    #log.info("querystate:{} - reason:{}".format(querystate, querystatereason ))
             else:
                 log.info("querystate:{}".format(querystate))
             if querystate in [consts.ATHENA_QUERY_STATE_FAILED,consts.ATHENA_QUERY_STATE_CANCELLED,consts.ATHENA_QUERY_STATE_SUCCEEDED]:break
@@ -145,15 +152,33 @@ class AthenaQueryMgr():
 
     def drop_table(self):
         querystring = "DROP TABLE {}".format(self.tablename)
-        return self.execute_query('drop_table', querystring)
+        return self.execute_query(consts.QUERY_ID_DROP_TABLE, querystring)
 
-    def create_table(self):
-        querystring = "CREATE TABLE {}".format(self.tablename)
-        return self.execute_query('create_table', querystring)
+    def create_table(self, curManifest, curS3Bucket, curS3Prefix):
+        return self.execute_query(consts.QUERY_ID_CREATE_TABLE, self.get_create_table_query(curManifest, curS3Bucket, curS3Prefix))
+
+    def get_create_table_query(self, curManifest, curS3Bucket, curS3Prefix):
+        querystring = "CREATE EXTERNAL TABLE IF NOT EXISTS {}.{} (\n".format(self.dbname, self.tablename)
+        i = 0
+        for c in curManifest.get('columns',[]):
+            if i: querystring += ",\n"
+            querystring += "`{}_{}` string".format(c['category'].lower(),c['name'].lower().replace(':','_'))
+            i += 1
+        querystring += " )\n" \
+                        " ROW FORMAT SERDE 'org.apache.hadoop.hive.serde2.OpenCSVSerde' \n" \
+                            "WITH SERDEPROPERTIES ( \n" \
+                            "'separatorChar' = ',', \n" \
+                            "'quoteChar' = '\\\"', \n" \
+                            "'escapeChar' = '\\\\' \n" \
+                        ") \n" \
+                        "STORED AS TEXTFILE \n" \
+                        "LOCATION 's3://{}/{}';".format(curS3Bucket,curS3Prefix)
+        return querystring
+
 
     def create_database(self):
         querystring = "CREATE DATABASE IF NOT EXISTS {}".format(self.dbname)
-        return self.execute_query('create_database', querystring)
+        return self.execute_query(consts.QUERY_ID_CREATE_DATABASE, querystring)
 
     def get_databases(self):
         result = []
@@ -208,3 +233,5 @@ class AthenaQueryMgr():
 
     def get_athena_query_output_s3_key(self, bucket, queryid):
         return self.athena_output_s3_location.split(bucket)[1][1:]+QUERY_METADATA_FOLDER+"/"+queryid+".json"
+
+

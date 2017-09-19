@@ -1,11 +1,16 @@
 #!/usr/bin/python
-import os, sys
+import os, sys, logging
 import argparse
 import traceback
 
 sys.path.insert(0, os.path.abspath('..'))
 import awscostusageprocessor.processor as cur
 import awscostusageprocessor.consts as consts
+import awscostusageprocessor.sql.athena as ath
+import awscostusageprocessor.utils as curutils
+
+log = logging.getLogger()
+log.setLevel(logging.INFO)
 
 
 def main(argv):
@@ -64,7 +69,17 @@ def main(argv):
     curprocessor = cur.CostUsageProcessor(**kwargs)
 
     if action in (consts.ACTION_PREPARE_ATHENA, consts.ACTION_PREPARE_QUICKSIGHT):
+      #Process Cost and Usage Report
       destS3keys = curprocessor.process_latest_aws_cur(action)
+
+      #Then create Athena table for the current month
+      athena = ath.AthenaQueryMgr("s3://"+curprocessor.destBucket, curprocessor.accountId, curprocessor.year, curprocessor.month)
+      athena.create_database()
+      athena.drop_table()#drops the table for the current month (before creating a new one)
+      curS3Prefix = curprocessor.destPrefix + "/" + curutils.get_period_prefix(curprocessor.year, curprocessor.month)
+      print ("Creating Athena table for S3 location [s3://{}/{}]".format(curprocessor.destBucket,curS3Prefix))
+      athena.create_table(curprocessor.curManifestJson, curprocessor.destBucket, curS3Prefix)
+
 
       if action == consts.ACTION_PREPARE_QUICKSIGHT:
         curprocessor.create_manifest(consts.MANIFEST_TYPE_QUICKSIGHT, kwargs['destBucket'],kwargs['destPrefix'], destS3keys)

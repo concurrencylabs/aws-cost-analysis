@@ -116,8 +116,9 @@ There are 3 different operations available:
 
 **Prepare files for Athena **
 
-This operation copies files from a destination S3 bucket and prepares the files so they
-can be queried using Athena (remove reportId hash, remove manifest files, etc.)
+This operation copies files from a destination S3 bucket, prepares the files and creates
+an Athena database and table, so they can be queried using Athena (remove reportId hash, remove manifest files, etc.). 
+
 
 ```
 python report_utils.py --action=prepare-athena --source-bucket=<s3-bucket-with-cost-usage-reports> --source-prefix=<folder>/ --dest-bucket=<s3-bucket-athena-will-read-files-from> --dest-prefix=<folder>/ --year=<year-in-4-digits> --month=<month-in-1-or-2-digits>
@@ -160,34 +161,17 @@ python report_utils.py --source-bucket=<s3-bucket-for-quicksight-files> --source
 
 **2. Prepare AWS Cost and Usage data for Athena**
 
+Make sure you have IAM permissions, environment variables are set and AWS Cost and Usage reports are ready in source-bucket. Then execute:
+
 ```
 python report_utils.py --action=prepare-athena --source-bucket=<s3-bucket-with-cost-usage-reports> --source-prefix=<folder>/ --dest-bucket=<s3-bucket-athena-will-read-files-from> --dest-prefix=<folder>/ --year=<year-in-4-digits> --month=<month-in-1-or-2-digits>
 ```
 
-**3. Create Athena database**
+The script also creates an Athena database with the format `costusage_<awsaccountid>` and a table with the format
+`hourly_<month_range>`
 
-Once your cleaned-up files are in S3, you need to have an Athena database. You can create one from the Athena console by running a SQL statement:
-
-```
-CREATE DATABASE billing;
-```
-
-You can use an existing database if you want, that's up to you. For this example we'll use a new database named 'billing'.
-
-The next step is to create an Athena table. You can do this by running the statement in <a href="https://github.com/ConcurrenyLabs/aws-cost-analysis/blob/master/awscostusageprocessor/sql/create_athena_table.sql" target="new">**create_athena_table.sql**</a> from the Athena console.
-We'll create one table per month. 
-
-Make sure you update the following parameters with actual values:
-
-* {dbname}
-* {tablename}
-* {bucket}
-* {prefix}
-
-
-**4. Execute queries against your AWS Cost and Usage data!**
+**3. Execute queries against your AWS Cost and Usage data!**
 That's it! Now you can query your AWS Cost and Usage data! You can use the sample queries in <a href="https://github.com/ConcurrenyLabs/aws-cost-analysis/blob/master/awscostusageprocessor/sql/athena_queries.sql" target="new">**athena_queries.sql**</a>
-
 
 
 ## Serverless Application Model Stack(optional)

@@ -124,6 +124,20 @@ WHERE period='<period>'
 
 
 
+/*
+View cost by region. Results include geo values that are not necessarily AWS regions, or blank for global resources.
+*/
+
+SELECT product_groupdescription, round(sum(cast(lineitem_unblendedcost AS double)),2) AS sum_unblendedcost
+                            FROM billing.hourly
+                            GROUP BY product_groupdescription
+                            ORDER BY sum_unblendedcost DESC
+
+
+
+
+
+
 
 
 

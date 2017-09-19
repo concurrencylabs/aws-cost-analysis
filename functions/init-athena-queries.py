@@ -28,15 +28,16 @@ def handler(event, context):
     apiprocessor = curapi.ApiProcessor(accountid, year, month)
 
     resultset = {'resultset':[]}
-    result_dict = {'getTotalCost':resultset, 'getCostByService':resultset, 'getCostByUsageType':resultset,
+    result_dict = {'getTotalCost':resultset, 'getHourlyCost':resultset, 'getCostByService':resultset, 'getCostByUsageType':resultset,
                    'getCostByResource':resultset, 'getUsageByResourceId':resultset}
 
-    result_dict['getTotalCost']['resultset'] = apiprocessor.getTotalCost()
     result_dict['getCostByService']['resultset'] = apiprocessor.getCostByService()
     result_dict['getCostByUsageType']['resultset'] = apiprocessor.getCostByUsageType()
     result_dict['getCostByResource']['resultset'] = apiprocessor.getCostByResource()
+    result_dict['getTotalCost']['resultset'] = apiprocessor.getTotalCost()
+    result_dict['getHourlyCost']['resultset'] = apiprocessor.getHourlyCost()
 
-    log.info("Results:{}".format(json.dumps(result_dict,indent=4)))
+    #log.info("Results:{}".format(json.dumps(result_dict,indent=4)))
 
     return event
 

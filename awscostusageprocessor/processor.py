@@ -46,8 +46,10 @@ class CostUsageProcessor():
         self.validate()
         self.init_clients()
 
+        self.curManifestJson = self.get_aws_manifest_content()
+
         if 'accountId' in args: self.accountId = args['accountId']
-        else: self.accountId = self.get_account_id_from_aws_manifest()
+        else: self.accountId = self.curManifestJson.get('account','')
 
 
 
@@ -188,6 +190,9 @@ class CostUsageProcessor():
     """
     This method gets the AWS Account ID from the Manifest file. This is used for Athena resource creation and
     Lambda functions that need to know the AWS Account ID.
+    NOTE: replaced by get_aws_manifest_content, which can be used to extract not just accountId, but all other fields
+    in the CUR manifest
+    """
     """
     def get_account_id_from_aws_manifest(self):
         result = ''
@@ -199,7 +204,7 @@ class CostUsageProcessor():
             if 'account' in manifest_json:
                 result = manifest_json['account']
         return result
-
+    """
 
     def get_aws_manifest_lastmodified_ts(self):
         result = ''
@@ -210,6 +215,17 @@ class CostUsageProcessor():
             result = response['LastModified']
         return result
 
+    """
+    Returns a JSON object representing the AWS Cost and Usage Report manifest
+    """
+    def get_aws_manifest_content(self):
+        result = {}
+        manifest_key = self.get_latest_aws_manifest_key()
+        print "Getting manifest file JSON content - bucket: [{}] - key: [{}]".format(self.sourceBucket, manifest_key)
+        response = self.s3sourceclient.get_object(Bucket=self.sourceBucket, Key=manifest_key)
+        if 'Body' in response:
+            result = json.loads(response['Body'].read())
+        return result
 
 
     """

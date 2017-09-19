@@ -74,9 +74,9 @@ def handler(event, context):
         try:
             cur_manifest_lastmodified_ts = curprocessor.get_aws_manifest_lastmodified_ts()
         except ManifestNotFoundError as e:
-            log.info("ManifestNotFoundError: [{}]".format(e.message))
+            log.info("ManifestNotFoundError:[{}]".format(e.message))
             cur_manifest_lastmodified_ts = datetime.datetime.strptime(consts.EPOCH_TS, consts.TIMESTAMP_FORMAT).replace(tzinfo=pytz.utc)
-            #TODO: add SNS notification for CURs not found
+            #TODO: add CW metric filter and SNS notification for CURs not found
 
         lastProcessedTs = datetime.datetime.strptime(item['lastProcessedTimestamp'], consts.TIMESTAMP_FORMAT).replace(tzinfo=pytz.utc)
         log.info("cur_manifest_lastmodified_ts:[{}] - lastProcessedTimestamp:[{}]".format(cur_manifest_lastmodified_ts, item['lastProcessedTimestamp']))
