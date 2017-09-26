@@ -46,10 +46,12 @@ class CostUsageProcessor():
         self.validate()
         self.init_clients()
 
+        self.accountId = args.get('accountId','')
+
         self.curManifestJson = self.get_aws_manifest_content()
 
-        if 'accountId' in args: self.accountId = args['accountId']
-        else: self.accountId = self.curManifestJson.get('account','')
+        if not self.accountId:
+            self.accountId = self.curManifestJson.get('account','')
 
 
 
@@ -138,7 +140,7 @@ class CostUsageProcessor():
 
     def get_latest_aws_manifest_key(self):
         manifestprefix = self.sourcePrefix + utils.get_period_prefix(self.year, self.month)
-        print "Getting Manifest key for bucket:[{}] - prefix:[{}]".format(self.sourceBucket,self.sourcePrefix)
+        print "Getting Manifest key for acccount:[{}] - bucket:[{}] - prefix:[{}]".format(self.accountId, self.sourceBucket,self.sourcePrefix)
         manifest_key = ''
         try:
             response = self.s3sourceclient.list_objects_v2(Bucket=self.sourceBucket,Prefix=manifestprefix)

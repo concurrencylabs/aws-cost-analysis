@@ -67,11 +67,10 @@ def handler(event, context):
         kwargs['xAccountSource']=True
         kwargs['roleArn'] = item['roleArn']
 
-        curprocessor = cur.CostUsageProcessor(**kwargs)
-
         #See how old is the latest CUR manifest in S3 and compare it against the lastProcessedTimestamp in the AWSAccountMetadata DDB table
         #If the CUR manifest is newer, then start processing
         try:
+            curprocessor = cur.CostUsageProcessor(**kwargs)
             cur_manifest_lastmodified_ts = curprocessor.get_aws_manifest_lastmodified_ts()
         except ManifestNotFoundError as e:
             log.info("ManifestNotFoundError:[{}]".format(e.message))
@@ -100,5 +99,7 @@ def handler(event, context):
         snsclient.publish(TopicArn=consts.SNS_TOPIC,
             Message='New Cost and Usage report. Started execution:\n'+sfn_executionlinks,
             Subject='New incoming Cost and Usage report executions')
+
+    log.info("Started executions: [{}]".format(execnames))
 
     return execnames

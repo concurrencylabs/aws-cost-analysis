@@ -151,7 +151,7 @@ class AthenaQueryMgr():
         return result
 
     def drop_table(self):
-        querystring = "DROP TABLE {}".format(self.tablename)
+        querystring = "DROP TABLE {}.{}".format(self.dbname, self.tablename)
         return self.execute_query(consts.QUERY_ID_DROP_TABLE, querystring)
 
     def create_table(self, curManifest, curS3Bucket, curS3Prefix):
