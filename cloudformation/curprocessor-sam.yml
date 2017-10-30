@@ -41,7 +41,7 @@ Resources:
         Timer:
           Type: Schedule
           Properties:
-            Schedule: rate(1 minute)
+            Schedule: rate(5 minutes)
       Fn::Transform:
         Name: AWS::Include
         Parameters:
@@ -165,5 +165,13 @@ Resources:
       ProvisionedThroughput:
         ReadCapacityUnits: 5
         WriteCapacityUnits: 5
+
+
+Outputs:
+  xAcctStepFunctionStarterFunction:
+    Description: Lambda function that starts Step Function for processing CUR
+    Value: !Ref xAcctStepFunctionStarter
+    Export:
+      Name: !Sub "${AWS::StackName}-xAcctStepFunctionStarterFunction"
 
 

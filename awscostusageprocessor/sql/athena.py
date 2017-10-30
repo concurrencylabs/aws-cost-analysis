@@ -117,7 +117,7 @@ class AthenaQueryMgr():
             if querystate == consts.ATHENA_QUERY_STATE_FAILED:
                 if 'StateChangeReason' in queryexecution['QueryExecution']['Status']:
                     querystatereason = queryexecution['QueryExecution']['Status']['StateChangeReason']
-                    #log.info("querystate:{} - reason:{}".format(querystate, querystatereason ))
+                    log.info("querystate [{}] reason [{}]".format(querystate, querystatereason ))
             else:
                 log.info("querystate:{}".format(querystate))
             if querystate in [consts.ATHENA_QUERY_STATE_FAILED,consts.ATHENA_QUERY_STATE_CANCELLED,consts.ATHENA_QUERY_STATE_SUCCEEDED]:break

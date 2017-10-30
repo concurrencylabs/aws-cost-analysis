@@ -7,6 +7,8 @@ import boto3
 import utils, consts
 from errors import ManifestNotFoundError
 
+from botocore.exceptions import ClientError
+
 class CostUsageProcessor():
     def __init__(self, **args):
         self.s3sourceclient = None
@@ -43,10 +45,12 @@ class CostUsageProcessor():
         self.roleArn = ''
         if 'roleArn' in args: self.roleArn = args['roleArn']
 
+        self.accountId = args.get('accountId','')
+
         self.validate()
         self.init_clients()
 
-        self.accountId = args.get('accountId','')
+        #self.accountId = args.get('accountId','')
 
         self.curManifestJson = self.get_aws_manifest_content()
 
@@ -153,6 +157,7 @@ class CostUsageProcessor():
                         manifest_key = key
                         break
         except Exception as e:
+            print "Error when getting manifest key for acccount:[{}] - bucket:[{}] - prefix:[{}]".format(self.accountId, self.sourceBucket,self.sourcePrefix)
             print e.message
             sys.exit()
 
@@ -208,6 +213,7 @@ class CostUsageProcessor():
         return result
     """
 
+    #TODO: this function is redundant, we can get the lastmodified_ts from the call to S3 in method get_aws_manifest_content and update the instance of CostUsageProcessor
     def get_aws_manifest_lastmodified_ts(self):
         result = ''
         manifest_key = self.get_latest_aws_manifest_key()
@@ -331,11 +337,21 @@ class CostUsageProcessor():
                 lambda_owner_aws_access_key_id = os.environ['LAMBDA_OWNER_AWS_ACCESS_KEY_ID']
                 lambda_owner_aws_secret_access_key = os.environ['LAMBDA_OWNER_AWS_SECRET_ACCESS_KEY']
                 #If running from inside a Lambda function, assume role using the function's owner's credentials (and not the temp credentials given to the function)
-                stsclient = boto3.client('sts', aws_access_key_id=lambda_owner_aws_access_key_id, aws_secret_access_key=lambda_owner_aws_secret_access_key)
+                masterstsclient = boto3.client('sts', aws_access_key_id=lambda_owner_aws_access_key_id, aws_secret_access_key=lambda_owner_aws_secret_access_key)
+                #instead of using the masterstsclient, we get a session token, otherwise we run into AccessDenied exceptions when using the same master credentials for assuming roles for multiple customer accounts
+                sessionToken = masterstsclient.get_session_token()
+                stsclient = boto3.client('sts', aws_access_key_id=sessionToken['Credentials']['AccessKeyId'],
+                                                aws_secret_access_key=sessionToken['Credentials']['SecretAccessKey'],
+                                                aws_session_token=sessionToken['Credentials']['SessionToken']
+                                                )
+                #stsclient = boto3.client('sts', aws_access_key_id=lambda_owner_aws_access_key_id, aws_secret_access_key=lambda_owner_aws_secret_access_key)
+
             else:
-                #Assume role using the credentials configured in the system
+                #Assume role using the AWS credentials configured in the environment
                 stsclient = boto3.client('sts')
+            print ("Assuming role [{}]".format(self.roleArn))
             stsresponse = stsclient.assume_role(RoleArn=self.roleArn, RoleSessionName='costAnalysis')
+
             if 'Credentials' in stsresponse:
                 accessKeyId = stsresponse['Credentials']['AccessKeyId']
                 secretAccessKey = stsresponse['Credentials']['SecretAccessKey']

@@ -6,10 +6,11 @@ sys.path.append(site_pkgs)
 
 import logging, json, time, datetime, hashlib, pytz
 import boto3
+from botocore.exceptions import ClientError as BotoClientError
+
 import awscostusageprocessor.utils as utils
 import awscostusageprocessor.processor as cur
 import awscostusageprocessor.consts as consts
-
 from awscostusageprocessor.errors import ManifestNotFoundError
 
 log = logging.getLogger()
@@ -36,12 +37,13 @@ def handler(event, context):
     MINUTE_DELTA = 0
     lastProcessedIncludeTs = (datetime.datetime.now(pytz.utc) + datetime.timedelta(minutes=-MINUTE_DELTA)).strftime(consts.TIMESTAMP_FORMAT)
 
-    log.info("Looking for AwsAccountMetadata items processed before [{}]".format(lastProcessedIncludeTs))
+    log.info("Looking for AwsAccountMetadata items processed before [{}] in table [{}]".format(lastProcessedIncludeTs, consts.AWS_ACCOUNT_METADATA_DDB_TABLE))
 
     metadatatable = ddbresource.Table(consts.AWS_ACCOUNT_METADATA_DDB_TABLE)
     response = metadatatable.scan(
             Select='ALL_ATTRIBUTES',
-            FilterExpression=boto3.dynamodb.conditions.Attr('lastProcessedTimestamp').lt(lastProcessedIncludeTs),
+            FilterExpression=boto3.dynamodb.conditions.Attr('lastProcessedTimestamp').lt(lastProcessedIncludeTs) &
+                             boto3.dynamodb.conditions.Attr('dataCollectionStatus').eq(consts.DATA_COLLECTION_STATUS_ACTIVE),
             ReturnConsumedCapacity='TOTAL'
     )
     log.info(json.dumps(response, indent=4))
@@ -70,12 +72,18 @@ def handler(event, context):
         #See how old is the latest CUR manifest in S3 and compare it against the lastProcessedTimestamp in the AWSAccountMetadata DDB table
         #If the CUR manifest is newer, then start processing
         try:
+            log.info("Starting new CUR evaluation for account [{}]".format(kwargs['accountId']))
             curprocessor = cur.CostUsageProcessor(**kwargs)
             cur_manifest_lastmodified_ts = curprocessor.get_aws_manifest_lastmodified_ts()
         except ManifestNotFoundError as e:
             log.info("ManifestNotFoundError:[{}]".format(e.message))
             cur_manifest_lastmodified_ts = datetime.datetime.strptime(consts.EPOCH_TS, consts.TIMESTAMP_FORMAT).replace(tzinfo=pytz.utc)
-            #TODO: add CW metric filter and SNS notification for CURs not found
+            continue
+            #TODO: add CW metric filter and alarm for CURs not found
+        except BotoClientError as e:
+            if e.response['Error']['Code'] == 'AccessDenied':
+                log.error("BotoAccessDenied awsPayerAccountId [{}] roleArn [{}] [{}]".format(curprocessor.accountId, curprocessor.roleArn, e.message))
+                continue
 
         lastProcessedTs = datetime.datetime.strptime(item['lastProcessedTimestamp'], consts.TIMESTAMP_FORMAT).replace(tzinfo=pytz.utc)
         log.info("cur_manifest_lastmodified_ts:[{}] - lastProcessedTimestamp:[{}]".format(cur_manifest_lastmodified_ts, item['lastProcessedTimestamp']))
