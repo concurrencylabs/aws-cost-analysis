@@ -162,7 +162,10 @@ class AthenaQueryMgr():
         i = 0
         for c in curManifest.get('columns',[]):
             if i: querystring += ",\n"
-            querystring += "`{}_{}` string".format(c['category'].lower(),c['name'].lower().replace(':','_'))
+            column_type = 'string'
+            #if c['name'].lower() in ('billingperiodstartdate','billingperiodenddate','usagestartdate','usageenddate'):
+            #    column_type = 'timestamp'
+            querystring += "`{}_{}` {}".format(c['category'].lower(),c['name'].lower().replace(':','_'),column_type)
             i += 1
         querystring += " )\n" \
                         " ROW FORMAT SERDE 'org.apache.hadoop.hive.serde2.OpenCSVSerde' \n" \

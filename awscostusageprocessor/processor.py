@@ -3,6 +3,7 @@ import sys
 import json
 import gzip
 import os
+import traceback
 import boto3
 import utils, consts
 from errors import ManifestNotFoundError
@@ -144,7 +145,7 @@ class CostUsageProcessor():
 
     def get_latest_aws_manifest_key(self):
         manifestprefix = self.sourcePrefix + utils.get_period_prefix(self.year, self.month)
-        print "Getting Manifest key for acccount:[{}] - bucket:[{}] - prefix:[{}]".format(self.accountId, self.sourceBucket,self.sourcePrefix)
+        print "Getting Manifest key for acccount:[{}] - bucket:[{}] - prefix:[{}]".format(self.accountId, self.sourceBucket,manifestprefix)
         manifest_key = ''
         try:
             response = self.s3sourceclient.list_objects_v2(Bucket=self.sourceBucket,Prefix=manifestprefix)
@@ -157,12 +158,12 @@ class CostUsageProcessor():
                         manifest_key = key
                         break
         except Exception as e:
-            print "Error when getting manifest key for acccount:[{}] - bucket:[{}] - prefix:[{}]".format(self.accountId, self.sourceBucket,self.sourcePrefix)
+            print "Error when getting manifest key for acccount:[{}] - bucket:[{}] - key:[{}]".format(self.accountId, self.sourceBucket, manifest_key)
             print e.message
-            sys.exit()
+            traceback.print_exc()
 
         if not manifest_key:
-            raise ManifestNotFoundError("Could not find manifest file in bucket:[{}], prefix:[{}]".format(self.sourceBucket, manifestprefix))
+            raise ManifestNotFoundError("Could not find manifest file in bucket:[{}], key:[{}]".format(self.sourceBucket, manifest_key))
 
         return manifest_key
 

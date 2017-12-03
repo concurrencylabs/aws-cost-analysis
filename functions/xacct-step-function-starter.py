@@ -1,4 +1,4 @@
-import os, sys
+import os, sys, traceback
 
 __location__ = os.path.dirname(os.path.realpath(__file__))
 site_pkgs = os.path.join(os.path.split(__location__)[0], "lib", "python2.7", "site-packages")
@@ -76,14 +76,24 @@ def handler(event, context):
             curprocessor = cur.CostUsageProcessor(**kwargs)
             cur_manifest_lastmodified_ts = curprocessor.get_aws_manifest_lastmodified_ts()
         except ManifestNotFoundError as e:
-            log.info("ManifestNotFoundError:[{}]".format(e.message))
+            log.info("ManifestNotFoundError [{}]".format(e.message))
             cur_manifest_lastmodified_ts = datetime.datetime.strptime(consts.EPOCH_TS, consts.TIMESTAMP_FORMAT).replace(tzinfo=pytz.utc)
             continue
             #TODO: add CW metric filter and alarm for CURs not found
-        except BotoClientError as e:
-            if e.response['Error']['Code'] == 'AccessDenied':
-                log.error("BotoAccessDenied awsPayerAccountId [{}] roleArn [{}] [{}]".format(curprocessor.accountId, curprocessor.roleArn, e.message))
-                continue
+        except BotoClientError as be:
+            errorType = ''
+            if be.response['Error']['Code'] == 'AccessDenied':
+                errorType = 'BotoAccessDenied'
+            else:
+                errorType = 'BotoClientError_'+be.response['Error']['Code']
+            log.error("{} awsPayerAccountId [{}] roleArn [{}] [{}]".format(errorType, curprocessor.accountId, curprocessor.roleArn, be.message))
+
+            continue
+
+        except Exception as e:
+            log.error("xAcctStepFunctionStarterException awsPayerAccountId [{}] roleArn [{}] [{}]".format(kwargs['accountId'], kwargs['roleArn'], e))
+            traceback.print_exc()
+            continue
 
         lastProcessedTs = datetime.datetime.strptime(item['lastProcessedTimestamp'], consts.TIMESTAMP_FORMAT).replace(tzinfo=pytz.utc)
         log.info("cur_manifest_lastmodified_ts:[{}] - lastProcessedTimestamp:[{}]".format(cur_manifest_lastmodified_ts, item['lastProcessedTimestamp']))

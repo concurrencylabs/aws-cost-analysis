@@ -14,8 +14,16 @@ def is_valid_prefix(prefix):
 Converts year and month to the format used by AWS Cost and Usage reports (i.e. 20170101-20170201)
 """
 def get_period_prefix(year, month):
-  imonth = int(month)
-  return "{}{:02d}01-{}{:02d}01/".format(year,imonth,year,imonth+1)
+  month = int(month)
+  year = int(year)
+  nextYear = year
+  nextMonth = month + 1
+
+  if month == 12:
+      nextMonth = 1
+      nextYear = year + 1
+
+  return "{}{:02d}01-{}{:02d}01/".format(year,month,nextYear,nextMonth)
 
 
 """
