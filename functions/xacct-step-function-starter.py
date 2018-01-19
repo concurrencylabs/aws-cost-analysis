@@ -93,7 +93,7 @@ def handler(event, context):
         except Exception as e:
             log.error("xAcctStepFunctionStarterException awsPayerAccountId [{}] roleArn [{}] [{}]".format(kwargs['accountId'], kwargs['roleArn'], e))
             traceback.print_exc()
-            continue
+            continue 
 
         lastProcessedTs = datetime.datetime.strptime(item['lastProcessedTimestamp'], consts.TIMESTAMP_FORMAT).replace(tzinfo=pytz.utc)
         log.info("cur_manifest_lastmodified_ts:[{}] - lastProcessedTimestamp:[{}]".format(cur_manifest_lastmodified_ts, item['lastProcessedTimestamp']))
@@ -107,7 +107,7 @@ def handler(event, context):
 
             #Prepare SNS notification
             sfn_executionarn = sfnresponse['executionArn']
-            sfn_executionlink = 'https://console.aws.amazon.com/states/home?region=us-east-1#/executions/details/'+sfn_executionarn+"\n"
+            sfn_executionlink = "https://console.aws.amazon.com/states/home?region={}#/executions/details/{}\n".format(consts.AWS_DEFAULT_REGION, sfn_executionarn)
             sfn_executionlinks += sfn_executionlink
             execnames.append(execname)
 
@@ -115,7 +115,7 @@ def handler(event, context):
 
     if sfn_executionlinks:
         snsclient.publish(TopicArn=consts.SNS_TOPIC,
-            Message='New Cost and Usage report. Started execution:\n'+sfn_executionlinks,
+            Message='New Cost and Usage report. Started execution: {}'.format(sfn_executionlinks),
             Subject='New incoming Cost and Usage report executions')
 
     log.info("Started executions: [{}]".format(execnames))

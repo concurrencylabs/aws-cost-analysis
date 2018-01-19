@@ -61,9 +61,9 @@ def handler(event, context):
 
         #Prepare SNS notification
         sfn_executionarn = sfnresponse['executionArn']
-        sfn_executionlink = 'https://console.aws.amazon.com/states/home?region=us-east-1#/executions/details/'+sfn_executionarn
+        sfn_executionlink = "https://console.aws.amazon.com/states/home?region={}#/executions/details/{}\n".format(consts.AWS_DEFAULT_REGION, sfn_executionarn)
         snsclient.publish(TopicArn=consts.SNS_TOPIC,
-                          Message='New Cost and Usage report. Started execution. Click here to view status:'+sfn_executionlink,
+                          Message='New Cost and Usage report. Started execution. Click here to view status: {}'.format(sfn_executionlink),
                           Subject='New incoming Cost and Usage report - accountid:{} - period:{}'.format(curprocessor.accountId, period))
 
         log.info("Started execution - executionArn: {}".format(sfn_executionarn))
