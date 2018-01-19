@@ -44,7 +44,7 @@ def handler(event, context):
         kwargs['sourceBucket'] = s3eventinfo['bucket']['name']
         kwargs['sourcePrefix'] = sourcePrefix
         kwargs['destBucket'] = consts.CUR_PROCESSOR_DEST_S3_BUCKET
-        kwargs['destPrefix']= '{}placeholder/'.format(consts.CUR_PROCESSOR_DEST_S3_PREFIX)#placeholder is to avoid validation error when instantiating CostUsageProcessor
+        kwargs['destPrefix']= '{}/'.format(consts.CUR_PROCESSOR_DEST_S3_PREFIX)
 
         curprocessor = cur.CostUsageProcessor(**kwargs)
         curprocessor.destPrefix = '{}{}/'.format(consts.CUR_PROCESSOR_DEST_S3_PREFIX, curprocessor.accountId)

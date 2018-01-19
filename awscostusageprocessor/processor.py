@@ -81,7 +81,7 @@ class CostUsageProcessor():
 
       period_prefix = utils.get_period_prefix(self.year, self.month)
       monthSourcePrefix = self.sourcePrefix + period_prefix
-      monthDestPrefix = self.destPrefix + period_prefix
+      monthDestPrefix = '{}{}/{}'.format(self.destPrefix, self.accountId, period_prefix)
       report_keys = self.get_latest_aws_cur_keys(self.sourceBucket, monthSourcePrefix, self.s3sourceclient )
       destS3keys = []
 
