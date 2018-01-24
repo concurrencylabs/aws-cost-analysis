@@ -8,16 +8,14 @@ Parameters:
     Type: String
     Default: "cur-processor"
 
-  AthenaOutputS3Url:
-    Description: "s3://<bucket-where-athena-results-are-put>"
+  xAccountStarter:
+    Description: "Do you want to enable the xAcctStepFunctionStarter function?"
     Type: String
-
-  CURDestBucket:
-    Description: "<name-of-bucket-to-put-cost-usage-reports>"
-    Type: String
+    Default: "Disabled"
+    AllowedValues: [ "Disabled", "Enabled" ] # Custom for Enterprise
     
-  CURDestPrefix:
-    Description: "<prefix>/"
+  BucketName:
+    Description: The name of the bucket that we will use for the reporting.
     Type: String
 
   CloudWatchRetention:
@@ -36,11 +34,43 @@ Parameters:
     Type: String
     Default: ""
 
+Conditions:
+  xAcctStepFunctionStarterEnabled: !Equals [!Ref xAccountStarter, 'Enabled']
+
 Resources:
 
   CostUsageReportTopic:
     Type: AWS::SNS::Topic
 
+  CostUsageReport:
+    Type: AWS::S3::Bucket
+    Properties: 
+      AccessControl: Private
+      BucketName: !Ref BucketName
+      
+  CostUsageReportBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties: 
+      Bucket: !Ref CostUsageReport
+      PolicyDocument: 
+        Id: AllowLogDelivery
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal: 
+              AWS: "arn:aws:iam::386209384616:root" 
+            Resource: !Sub ${CostUsageReport.Arn}
+            Action:
+              - s3:GetBucketAcl
+              - s3:GetBucketPolicy
+          - Effect: Allow
+            Principal: 
+              AWS: "arn:aws:iam::386209384616:root" 
+            Resource: 
+              - !Sub ${CostUsageReport.Arn}/aws-reports/*
+              - !Sub ${CostUsageReport.Arn}/aws-programmatic-access-test-object
+            Action: s3:PutObject
+     
   StepFunctionsRole:
     Type: AWS::IAM::Role
     Properties:
@@ -99,6 +129,7 @@ Resources:
           }
 
   xAcctStepFunctionStarterLogGroup:
+    Condition: xAcctStepFunctionStarterEnabled
     Type: AWS::Logs::LogGroup
     DependsOn: [ xAcctStepFunctionStarter ]
     Properties:
@@ -106,6 +137,7 @@ Resources:
       RetentionInDays: !Ref CloudWatchRetention
 
   xAcctStepFunctionStarter:
+    Condition: xAcctStepFunctionStarterEnabled
     Type: AWS::Serverless::Function
     Properties:
       Handler: functions/xacct-step-function-starter.handler
@@ -137,9 +169,9 @@ Resources:
             Schedule: rate(5 minutes)
       Environment:
         Variables:
-          ATHENA_BASE_OUTPUT_S3_BUCKET: !Ref AthenaOutputS3Url
-          CUR_PROCESSOR_DEST_S3_BUCKET: !Ref CURDestBucket
-          CUR_PROCESSOR_DEST_S3_PREFIX: !Ref CURDestPrefix
+          ATHENA_BASE_OUTPUT_S3_BUCKET: !Sub s3://${CostUsageReport}/athena
+          CUR_PROCESSOR_DEST_S3_BUCKET: !Ref CostUsageReport
+          CUR_PROCESSOR_DEST_S3_PREFIX: /cur-reports
           AWS_ACCOUNT_METADATA_DDB_TABLE: !Ref AWSAccountMetadata
           STEP_FUNCTION_PREPARE_CUR_ATHENA: !Sub arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:AWSCostUsageReport
           SNS_TOPIC: !Ref CostUsageReportTopic
@@ -170,11 +202,24 @@ Resources:
       Timeout: 30
       MemorySize: 128
       CodeUri: ../
+      Events:
+        Manifests:
+          Type: S3
+          Properties:
+            Bucket: !Ref CostUsageReport
+            Events: s3:ObjectCreated:*
+            Filter:
+              S3Key:
+                Rules:
+                  - Name: prefix
+                    Value: aws-reports/
+                  - Name: suffix
+                    Value: Manifest.json
       Environment:
         Variables:
-          ATHENA_BASE_OUTPUT_S3_BUCKET: !Ref AthenaOutputS3Url
-          CUR_PROCESSOR_DEST_S3_BUCKET: !Ref CURDestBucket
-          CUR_PROCESSOR_DEST_S3_PREFIX: !Ref CURDestPrefix
+          ATHENA_BASE_OUTPUT_S3_BUCKET: !Sub s3://${BucketName}/athena
+          CUR_PROCESSOR_DEST_S3_BUCKET: !Ref BucketName
+          CUR_PROCESSOR_DEST_S3_PREFIX: /cur-reports
           AWS_ACCOUNT_METADATA_DDB_TABLE: !Ref AWSAccountMetadata
           STEP_FUNCTION_PREPARE_CUR_ATHENA: !Sub arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:AWSCostUsageReport
           SNS_TOPIC: !Ref CostUsageReportTopic
@@ -205,9 +250,9 @@ Resources:
       CodeUri: ../
       Environment:
         Variables:
-          ATHENA_BASE_OUTPUT_S3_BUCKET: !Ref AthenaOutputS3Url
-          CUR_PROCESSOR_DEST_S3_BUCKET: !Ref CURDestBucket
-          CUR_PROCESSOR_DEST_S3_PREFIX: !Ref CURDestPrefix
+          ATHENA_BASE_OUTPUT_S3_BUCKET: !Sub s3://${BucketName}/athena
+          CUR_PROCESSOR_DEST_S3_BUCKET: !Ref BucketName
+          CUR_PROCESSOR_DEST_S3_PREFIX: /cur-reports
           AWS_ACCOUNT_METADATA_DDB_TABLE: !Ref AWSAccountMetadata
           STEP_FUNCTION_PREPARE_CUR_ATHENA: !Sub arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:AWSCostUsageReport
           SNS_TOPIC: !Ref CostUsageReportTopic
@@ -240,9 +285,9 @@ Resources:
       CodeUri: ../
       Environment:
         Variables:
-          ATHENA_BASE_OUTPUT_S3_BUCKET: !Ref AthenaOutputS3Url
-          CUR_PROCESSOR_DEST_S3_BUCKET: !Ref CURDestBucket
-          CUR_PROCESSOR_DEST_S3_PREFIX: !Ref CURDestPrefix
+          ATHENA_BASE_OUTPUT_S3_BUCKET: !Sub s3://${BucketName}/athena
+          CUR_PROCESSOR_DEST_S3_BUCKET: !Ref BucketName
+          CUR_PROCESSOR_DEST_S3_PREFIX: /cur-reports
           AWS_ACCOUNT_METADATA_DDB_TABLE: !Ref AWSAccountMetadata
           STEP_FUNCTION_PREPARE_CUR_ATHENA: !Sub arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:AWSCostUsageReport
           SNS_TOPIC: !Ref CostUsageReportTopic
@@ -275,9 +320,9 @@ Resources:
       CodeUri: ../
       Environment:
         Variables:
-          ATHENA_BASE_OUTPUT_S3_BUCKET: !Ref AthenaOutputS3Url
-          CUR_PROCESSOR_DEST_S3_BUCKET: !Ref CURDestBucket
-          CUR_PROCESSOR_DEST_S3_PREFIX: !Ref CURDestPrefix
+          ATHENA_BASE_OUTPUT_S3_BUCKET: !Sub s3://${BucketName}/athena
+          CUR_PROCESSOR_DEST_S3_BUCKET: !Ref BucketName
+          CUR_PROCESSOR_DEST_S3_PREFIX: /cur-reports
           AWS_ACCOUNT_METADATA_DDB_TABLE: !Ref AWSAccountMetadata
           STEP_FUNCTION_PREPARE_CUR_ATHENA: !Sub arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:AWSCostUsageReport
           SNS_TOPIC: !Ref CostUsageReportTopic
@@ -308,9 +353,9 @@ Resources:
       CodeUri: ../
       Environment:
         Variables:
-          ATHENA_BASE_OUTPUT_S3_BUCKET: !Ref AthenaOutputS3Url
-          CUR_PROCESSOR_DEST_S3_BUCKET: !Ref CURDestBucket
-          CUR_PROCESSOR_DEST_S3_PREFIX: !Ref CURDestPrefix
+          ATHENA_BASE_OUTPUT_S3_BUCKET: !Sub s3://${BucketName}/athena
+          CUR_PROCESSOR_DEST_S3_BUCKET: !Ref BucketName
+          CUR_PROCESSOR_DEST_S3_PREFIX: /cur-reports
           AWS_ACCOUNT_METADATA_DDB_TABLE: !Ref AWSAccountMetadata
           STEP_FUNCTION_PREPARE_CUR_ATHENA: !Sub arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:AWSCostUsageReport
           SNS_TOPIC: !Ref CostUsageReportTopic
@@ -333,9 +378,14 @@ Resources:
 
 Outputs:
   xAcctStepFunctionStarterFunction:
+    Condition: xAcctStepFunctionStarterEnabled
     Description: Lambda function that starts Step Function for processing CUR
     Value: !Ref xAcctStepFunctionStarter
     Export:
       Name: !Sub "${AWS::StackName}-xAcctStepFunctionStarterFunction"
 
+  BucketName: 
+    Value: !Ref CostUsageReport
 
+  ReportPathPrefix:
+    Value: aws-report/

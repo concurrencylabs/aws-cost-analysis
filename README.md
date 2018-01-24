@@ -225,9 +225,7 @@ You can deploy the AWS cost analysis and optimization in your AWS Account using 
 AWS_REGION=us-east-1
 BUCKET=my-s3-bucket # Used for the package command not the billing bucket
 NAME=curprocessor-sam
-ATHENA_BASE_OUTPUT_S3_BUCKET=s3://[BUCKET_NAME]/[PREFIX] # Don't end with a slash!
-CUR_PROCESSOR_DEST_S3_BUCKET=[BUCKET_NAME]
-CUR_PROCESSOR_DEST_S3_PREFIX=[PREFIX] # Don't end with a slash!
+BILLING_BUCKET_NAME=[BUCKET_NAME]
 
 # Package the template and functions
 sam package \
@@ -244,9 +242,8 @@ sam deploy \
   --capabilities CAPABILITY_IAM \
   --parameter-overrides \
       StackTag=${NAME} \
-      AthenaOutputS3Url=${ATHENA_BASE_OUTPUT_S3_BUCKET} \
-      CURDestBucket=${CUR_PROCESSOR_DEST_S3_BUCKET} \
-      CURDestPrefix=${CUR_PROCESSOR_DEST_S3_PREFIX} \
+      BucketName=${BILLING_BUCKET_NAME} \
+      xAccountStarter=Disabled \
       CloudWatchRetention=7
 ```
 
