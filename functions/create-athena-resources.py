@@ -44,7 +44,7 @@ def handler(event, context):
 
     #TODO: use columnar format, for better performance
     #create new table for the current month
-    curS3Prefix = consts.CUR_PROCESSOR_DEST_S3_PREFIX + accountid + "/" + utils.get_period_prefix(year, month)#TODO: move to a method in athena module, so it can be reused
+    curS3Prefix = consts.CUR_PROCESSOR_DEST_S3_PREFIX + "/" + accountid + "/" + utils.get_period_prefix(year, month)#TODO: move to a method in athena module, so it can be reused
     athena.create_table(curManifest, curS3Bucket, curS3Prefix)
 
     return event

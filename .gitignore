@@ -4,3 +4,4 @@ lib
 pip-selfcheck.json
 .Python
 *-packaged.yml
+*.pyc
