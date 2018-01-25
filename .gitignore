@@ -1,0 +1,14 @@
+.Python
+.IDEA
+bin/
+lib/
+tmp/*
+include/
+pip-selfcheck.json
+*.pyc
+
+functions/api-handler.py
+test/events/*
+
+config/prod/*
+config/dev/*
