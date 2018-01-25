@@ -244,7 +244,8 @@ sam deploy \
       StackTag=${NAME} \
       BucketName=${BILLING_BUCKET_NAME} \
       xAccountStarter=Disabled \
-      CloudWatchRetention=7
+      CloudWatchRetention=7 \
+      ReportPathPrefix=aws-reports
 ```
 
 ### Configure
