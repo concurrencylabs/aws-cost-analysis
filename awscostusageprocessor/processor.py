@@ -113,7 +113,7 @@ class CostUsageProcessor():
             with gzip.open(tmpLocalKey, 'rb') as f:
                 f.next()#skips first line for Athena files
                 #Write contents to another tmp file, which will be uploaded to S3
-                with gzip.open(finalLocalKey,'wb') as no_header:
+                with gzip.open(finalLocalKey,'ab') as no_header:
                     for line in f:
                         no_header.write(line)
                         record_count = record_count + 1
