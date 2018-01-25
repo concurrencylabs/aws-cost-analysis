@@ -18,6 +18,11 @@ Parameters:
     Description: The name of the bucket that we will use for the reporting.
     Type: String
 
+  ReportPathPrefix:
+    Description: The path prefix that will be used for the AWS Report delivery.
+    Type: String
+    Default: aws-reports
+
   CloudWatchRetention:
     Description: "The number of days that we will store the AWS CloudWatch Logs"
     Type: String
@@ -67,7 +72,7 @@ Resources:
             Principal: 
               AWS: "arn:aws:iam::386209384616:root" 
             Resource: 
-              - !Sub ${CostUsageReport.Arn}/aws-reports/*
+              - !Sub ${CostUsageReport.Arn}/${ReportPathPrefix}*
               - !Sub ${CostUsageReport.Arn}/aws-programmatic-access-test-object
             Action: s3:PutObject
      
@@ -385,7 +390,9 @@ Outputs:
       Name: !Sub "${AWS::StackName}-xAcctStepFunctionStarterFunction"
 
   BucketName: 
+    Description: The S3 Bucket name that must be used for the AWS Report delivery.
     Value: !Ref CostUsageReport
 
   ReportPathPrefix:
-    Value: aws-report/
+    Description: The path prefix that must be used for the AWS Report delivery.
+    Value: !Ref ReportPathPrefix
