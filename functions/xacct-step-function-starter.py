@@ -50,6 +50,7 @@ def handler(event, context):
 
     sfn_executionlinks = ""
     execnames = []
+
     #Get metadata for each of those accounts and prepare args for CostUsageProcessor
     for item in response['Items']:
 
@@ -62,12 +63,14 @@ def handler(event, context):
         kwargs['year'] = year
         kwargs['month'] = month
         kwargs['sourceBucket'] = item['curBucket']
-        kwargs['sourcePrefix'] = "{}{}/".format(item['curPrefix'],item['curName'])
+        kwargs['sourcePrefix'] = "{}{}/".format(item['curPrefix'],item['curName']) #TODO: move to a common function
         kwargs['destBucket'] = consts.CUR_PROCESSOR_DEST_S3_BUCKET
         kwargs['destPrefix']= '{}{}/'.format(consts.CUR_PROCESSOR_DEST_S3_PREFIX, item['awsPayerAccountId'])
         kwargs['accountId'] = item['awsPayerAccountId']
         kwargs['xAccountSource']=True
         kwargs['roleArn'] = item['roleArn']
+        minutesSinceLastCurProcessed = int((now - datetime.datetime.strptime(item.get('lastProcessedTimestamp',consts.EPOCH_TS),consts.TIMESTAMP_FORMAT).replace(tzinfo=pytz.utc)).seconds / 60)
+        log.info("minutesSinceLastCurProcessed [{}]".format(minutesSinceLastCurProcessed))
 
         #See how old is the latest CUR manifest in S3 and compare it against the lastProcessedTimestamp in the AWSAccountMetadata DDB table
         #If the CUR manifest is newer, then start processing

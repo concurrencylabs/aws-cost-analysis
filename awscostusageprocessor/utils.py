@@ -32,7 +32,7 @@ as well as the prefix, based on the S3 key of the report.
 For example, period comes in the format: 20170501-20170601.
 
 A report key comes in the following format:
-'/dir/dir/20170601-20170701/hash/{reportname}.csv.gz'
+'<prefix>/<period>/<hash>/<reportname>.csv.gz'
 
 """
 
@@ -46,6 +46,10 @@ def extract_period(s3key):
 
     year = period[0:4]
     month = period[4:6]
+
+    print("s3 key [{}]".format(s3key))
+    print("dirs [{}]".format(dirs))
+    print("prefix [{}] year [{}] month [{}]".format(prefix, year, month))
     return prefix, year, month
 
 

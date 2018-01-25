@@ -51,7 +51,7 @@ class AthenaQueryMgr():
             queryexecutionid = self.get_queryexecutionid(start_query_response)
             log.info("QueryExecutionId: {}".format(queryexecutionid))
             self.create_query_metadata(queryid, queryexecutionid)
-            querystate = self.poll_query_state(queryexecutionid, 100)
+            querystate = self.poll_query_state(queryexecutionid, 250)
         else:
             log.info("Fetching results for query [{}] based on existing queryExecutionId: [{}]".format(queryid, queryexecutionid))
             querystate = self.poll_query_state(queryexecutionid, 1)
@@ -119,7 +119,7 @@ class AthenaQueryMgr():
                     querystatereason = queryexecution['QueryExecution']['Status']['StateChangeReason']
                     log.info("querystate [{}] reason [{}]".format(querystate, querystatereason ))
             else:
-                log.info("querystate:{}".format(querystate))
+                log.info("querystate {}".format(querystate))
             if querystate in [consts.ATHENA_QUERY_STATE_FAILED,consts.ATHENA_QUERY_STATE_CANCELLED,consts.ATHENA_QUERY_STATE_SUCCEEDED]:break
         return querystate
 

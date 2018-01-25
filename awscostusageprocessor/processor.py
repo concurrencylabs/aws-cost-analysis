@@ -69,7 +69,7 @@ class CostUsageProcessor():
     - Manifest files must not be included in S3 Athena bucket.
     - No folders must exist underneath partition folders for Athena (i.e. data files should live under 20170201-20170301)
     - First row needs to be removed for Athena
-    - Create Athena files in Reduced Redundancy storage class.
+    - Create Athena files in Reduced Redundancy storage class, to save money.
     - Define user-metadata that includes the report ID hash (folder AWS creates when it generates new Cost and Usage reports)
     """
 

@@ -205,12 +205,50 @@ This function receives an S3 PUT event when a new AWS Cost and Usage
 report is generated and it then starts the Step Function workflow. You'll
 have to manually configure the S3 event so it points to this function.
 
-**step-function-athena.json**
-Step Function definition to automate the daily processing of CUR files and
-creation of Athena resources.
-
 Under the `cloudformation` folder:
 
 **cloudformation/process-cur-sam.yml**
 Serverless Application Model definition to deploy all Lambda functions
+
+
+### Automating and Orchestrating Executions using AWS Step Functions
+
+You can arrange the Lambda functions above and automate their execution. All you have
+to do is to create a State Function that calls the relevant Lambda functions.
+
+The Step Function is defined in the following file:
+
+**functions/step-function-athena.json**
+Step Function definition to automate the daily processing of CUR files and
+creation of Athena resources.
+
+**Starting the Step Function**
+
+You can set up an S3 event in the S3 Bucket where AWS places incoming Cost and Usage reports.
+This event can trigger Lambda function `s3event-step-function-starter.py`, which
+sets all the relevant parameters for the Step Function.
+ 
+If you prefer an alternate method to start the Step Function, just make sure
+that it sends a dictionary with the following values in it: `year`, `month`,
+`sourceBucket`, `sourcePrefix`, `destBucket`, `destPrefix`, `accountId` and
+optionally `xAccountSource` (Boolean), and `roleArn` if you're analyzing
+Cost and Usage reports cross-account.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 

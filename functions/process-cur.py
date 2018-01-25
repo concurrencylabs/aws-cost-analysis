@@ -22,5 +22,6 @@ def handler(event, context):
     #This function only supports processing files for Athena (for now).
     curprocessor.process_latest_aws_cur(consts.ACTION_PREPARE_ATHENA)
     event.update({'curManifest':curprocessor.curManifestJson})
+    if not event.get('accountId',''): event['accountId']=curprocessor.accountId
     log.info("Return object:[{}]".format(event))
     return event
