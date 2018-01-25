@@ -2,17 +2,142 @@ AWSTemplateFormatVersion : '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 Description: Processes incoming AWS Cost and Usage Reports and gets them ready for analysis in Athena and QuickSight
 Parameters:
-  EnvConfigFileS3Uri:
-    Description: "Location of the YAML file that contains the environment variables used by all functions. Must be in the format s3://<bucket>/<dir>/<dir>/<file-name.yml>. See example in config/example/env-variables.yml"
-    Type: String
+  
   StackTag:
     Description: "Value of the 'stack' tag"
     Type: String
     Default: "cur-processor"
 
+  xAccountStarter:
+    Description: "Do you want to enable the xAcctStepFunctionStarter function?"
+    Type: String
+    Default: "Disabled"
+    AllowedValues: [ "Disabled", "Enabled" ] # Custom for Enterprise
+    
+  BucketName:
+    Description: The name of the bucket that we will use for the reporting.
+    Type: String
+
+  CloudWatchRetention:
+    Description: "The number of days that we will store the AWS CloudWatch Logs"
+    Type: String
+    Default: 7
+
+  AccessKey:
+    Description: "<aws-iam-key-id-(only-used-in-cross-account-scenarios)>"
+    Type: String
+    Default: ""
+    
+  SecretAccessKey:
+    Description: "<secret-access-key-(only-used-in-cross-account-scenarios)>"
+    NoEcho: true
+    Type: String
+    Default: ""
+
+Conditions:
+  xAcctStepFunctionStarterEnabled: !Equals [!Ref xAccountStarter, 'Enabled']
+
 Resources:
 
+  CostUsageReportTopic:
+    Type: AWS::SNS::Topic
+
+  CostUsageReport:
+    Type: AWS::S3::Bucket
+    Properties: 
+      AccessControl: Private
+      BucketName: !Ref BucketName
+      
+  CostUsageReportBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties: 
+      Bucket: !Ref CostUsageReport
+      PolicyDocument: 
+        Id: AllowLogDelivery
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal: 
+              AWS: "arn:aws:iam::386209384616:root" 
+            Resource: !Sub ${CostUsageReport.Arn}
+            Action:
+              - s3:GetBucketAcl
+              - s3:GetBucketPolicy
+          - Effect: Allow
+            Principal: 
+              AWS: "arn:aws:iam::386209384616:root" 
+            Resource: 
+              - !Sub ${CostUsageReport.Arn}/aws-reports/*
+              - !Sub ${CostUsageReport.Arn}/aws-programmatic-access-test-object
+            Action: s3:PutObject
+     
+  StepFunctionsRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Path: /
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action: sts:AssumeRole
+            Principal:
+              Service: !Sub states.${AWS::Region}.amazonaws.com
+      Policies:
+        - PolicyName: InvokeLambdaFunctions
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Resource:
+                  - !GetAtt ProcessCostUsageFunction.Arn
+                  - !GetAtt CreateAthenaResourcesFunction.Arn
+                  - !GetAtt UpdateMetadataFunction.Arn
+                  - !GetAtt InitializeAthenaQueriesFunction.Arn
+                Action:
+                  - lambda:InvokeFunction
+
+  StepFunctions:
+    Type: AWS::StepFunctions::StateMachine
+    Properties:
+      StateMachineName: AWSCostUsageReport 
+      RoleArn: !GetAtt StepFunctionsRole.Arn
+      DefinitionString: !Sub |
+          {
+            "Comment": "Process AWS Cost and Usage reports and prepare them for Athena.",
+            "StartAt": "ProcessCostUsageReport",
+            "States": {
+              "ProcessCostUsageReport": {
+                "Type": "Task",
+                "Resource": "${ProcessCostUsageFunction.Arn}",
+                "Next": "CreateAthenaResources"
+              },
+              "CreateAthenaResources": {
+                "Type": "Task",
+                "Resource": "${CreateAthenaResourcesFunction.Arn}",
+                "Next": "UpdateMetadata"
+              },
+              "UpdateMetadata": {
+                "Type" : "Task",
+                "Resource": "${UpdateMetadataFunction.Arn}",
+                "Next": "InitializeAthenaQueries"
+              },
+              "InitializeAthenaQueries": {
+                "Type" : "Task",
+                "Resource": "${InitializeAthenaQueriesFunction.Arn}",
+                "End": true
+              }
+            }
+          }
+
+  xAcctStepFunctionStarterLogGroup:
+    Condition: xAcctStepFunctionStarterEnabled
+    Type: AWS::Logs::LogGroup
+    DependsOn: [ xAcctStepFunctionStarter ]
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${xAcctStepFunctionStarter}
+      RetentionInDays: !Ref CloudWatchRetention
+
   xAcctStepFunctionStarter:
+    Condition: xAcctStepFunctionStarterEnabled
     Type: AWS::Serverless::Function
     Properties:
       Handler: functions/xacct-step-function-starter.handler
@@ -42,13 +167,26 @@ Resources:
           Type: Schedule
           Properties:
             Schedule: rate(5 minutes)
-      Fn::Transform:
-        Name: AWS::Include
-        Parameters:
-          Location : !Ref EnvConfigFileS3Uri
+      Environment:
+        Variables:
+          ATHENA_BASE_OUTPUT_S3_BUCKET: !Sub s3://${CostUsageReport}/athena
+          CUR_PROCESSOR_DEST_S3_BUCKET: !Ref CostUsageReport
+          CUR_PROCESSOR_DEST_S3_PREFIX: /cur-reports
+          AWS_ACCOUNT_METADATA_DDB_TABLE: !Ref AWSAccountMetadata
+          STEP_FUNCTION_PREPARE_CUR_ATHENA: !Sub arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:AWSCostUsageReport
+          SNS_TOPIC: !Ref CostUsageReportTopic
+          LAMBDA_OWNER_AWS_ACCESS_KEY_ID: !Ref AccessKey
+          LAMBDA_OWNER_AWS_SECRET_ACCESS_KEY: !Ref SecretAccessKey
       Tracing: Active
       Tags:
         stack: !Ref StackTag
+
+  S3EventStepFunctionStarterLogGroup:
+    Type: AWS::Logs::LogGroup
+    DependsOn: [ S3EventStepFunctionStarter ]
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${S3EventStepFunctionStarter}
+      RetentionInDays: !Ref CloudWatchRetention
 
   S3EventStepFunctionStarter:
     Type: AWS::Serverless::Function
@@ -64,13 +202,39 @@ Resources:
       Timeout: 30
       MemorySize: 128
       CodeUri: ../
-      Fn::Transform:
-        Name: AWS::Include
-        Parameters:
-          Location : !Ref EnvConfigFileS3Uri
+      Events:
+        Manifests:
+          Type: S3
+          Properties:
+            Bucket: !Ref CostUsageReport
+            Events: s3:ObjectCreated:*
+            Filter:
+              S3Key:
+                Rules:
+                  - Name: prefix
+                    Value: aws-reports/
+                  - Name: suffix
+                    Value: Manifest.json
+      Environment:
+        Variables:
+          ATHENA_BASE_OUTPUT_S3_BUCKET: !Sub s3://${BucketName}/athena
+          CUR_PROCESSOR_DEST_S3_BUCKET: !Ref BucketName
+          CUR_PROCESSOR_DEST_S3_PREFIX: /cur-reports
+          AWS_ACCOUNT_METADATA_DDB_TABLE: !Ref AWSAccountMetadata
+          STEP_FUNCTION_PREPARE_CUR_ATHENA: !Sub arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:AWSCostUsageReport
+          SNS_TOPIC: !Ref CostUsageReportTopic
+          LAMBDA_OWNER_AWS_ACCESS_KEY_ID: !Ref AccessKey
+          LAMBDA_OWNER_AWS_SECRET_ACCESS_KEY: !Ref SecretAccessKey
       Tracing: Active
       Tags:
         stack: !Ref StackTag
+
+  ProcessCostUsageFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DependsOn: [ ProcessCostUsageFunction ]
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${ProcessCostUsageFunction}
+      RetentionInDays: !Ref CloudWatchRetention
 
   ProcessCostUsageFunction:
     Type: AWS::Serverless::Function
@@ -84,13 +248,26 @@ Resources:
       Timeout: 300
       MemorySize: 1536
       CodeUri: ../
-      Fn::Transform:
-        Name: AWS::Include
-        Parameters:
-          Location : !Ref EnvConfigFileS3Uri
+      Environment:
+        Variables:
+          ATHENA_BASE_OUTPUT_S3_BUCKET: !Sub s3://${BucketName}/athena
+          CUR_PROCESSOR_DEST_S3_BUCKET: !Ref BucketName
+          CUR_PROCESSOR_DEST_S3_PREFIX: /cur-reports
+          AWS_ACCOUNT_METADATA_DDB_TABLE: !Ref AWSAccountMetadata
+          STEP_FUNCTION_PREPARE_CUR_ATHENA: !Sub arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:AWSCostUsageReport
+          SNS_TOPIC: !Ref CostUsageReportTopic
+          LAMBDA_OWNER_AWS_ACCESS_KEY_ID: !Ref AccessKey
+          LAMBDA_OWNER_AWS_SECRET_ACCESS_KEY: !Ref SecretAccessKey
       Tracing: Active
       Tags:
         stack: !Ref StackTag
+
+  CreateAthenaResourcesFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DependsOn: [ CreateAthenaResourcesFunction ]
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${CreateAthenaResourcesFunction}
+      RetentionInDays: !Ref CloudWatchRetention
 
   CreateAthenaResourcesFunction:
     Type: AWS::Serverless::Function
@@ -106,13 +283,26 @@ Resources:
       Timeout: 300
       MemorySize: 1536
       CodeUri: ../
-      Fn::Transform:
-        Name: AWS::Include
-        Parameters:
-          Location : !Ref EnvConfigFileS3Uri
+      Environment:
+        Variables:
+          ATHENA_BASE_OUTPUT_S3_BUCKET: !Sub s3://${BucketName}/athena
+          CUR_PROCESSOR_DEST_S3_BUCKET: !Ref BucketName
+          CUR_PROCESSOR_DEST_S3_PREFIX: /cur-reports
+          AWS_ACCOUNT_METADATA_DDB_TABLE: !Ref AWSAccountMetadata
+          STEP_FUNCTION_PREPARE_CUR_ATHENA: !Sub arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:AWSCostUsageReport
+          SNS_TOPIC: !Ref CostUsageReportTopic
+          LAMBDA_OWNER_AWS_ACCESS_KEY_ID: !Ref AccessKey
+          LAMBDA_OWNER_AWS_SECRET_ACCESS_KEY: !Ref SecretAccessKey
       Tracing: Active
       Tags:
         stack: !Ref StackTag
+
+  InitializeAthenaQueriesFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DependsOn: [ InitializeAthenaQueriesFunction ]
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${InitializeAthenaQueriesFunction}
+      RetentionInDays: !Ref CloudWatchRetention
 
   InitializeAthenaQueriesFunction:
     Type: AWS::Serverless::Function
@@ -128,13 +318,26 @@ Resources:
       Timeout: 300
       MemorySize: 1536
       CodeUri: ../
-      Fn::Transform:
-        Name: AWS::Include
-        Parameters:
-          Location : !Ref EnvConfigFileS3Uri
+      Environment:
+        Variables:
+          ATHENA_BASE_OUTPUT_S3_BUCKET: !Sub s3://${BucketName}/athena
+          CUR_PROCESSOR_DEST_S3_BUCKET: !Ref BucketName
+          CUR_PROCESSOR_DEST_S3_PREFIX: /cur-reports
+          AWS_ACCOUNT_METADATA_DDB_TABLE: !Ref AWSAccountMetadata
+          STEP_FUNCTION_PREPARE_CUR_ATHENA: !Sub arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:AWSCostUsageReport
+          SNS_TOPIC: !Ref CostUsageReportTopic
+          LAMBDA_OWNER_AWS_ACCESS_KEY_ID: !Ref AccessKey
+          LAMBDA_OWNER_AWS_SECRET_ACCESS_KEY: !Ref SecretAccessKey
       Tracing: Active
       Tags:
         stack: !Ref StackTag
+
+  UpdateMetadataFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DependsOn: [ UpdateMetadataFunction ]
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${UpdateMetadataFunction}
+      RetentionInDays: !Ref CloudWatchRetention
 
   UpdateMetadataFunction:
     Type: AWS::Serverless::Function
@@ -148,10 +351,16 @@ Resources:
       Timeout: 30
       MemorySize: 256
       CodeUri: ../
-      Fn::Transform:
-        Name: AWS::Include
-        Parameters:
-          Location : !Ref EnvConfigFileS3Uri
+      Environment:
+        Variables:
+          ATHENA_BASE_OUTPUT_S3_BUCKET: !Sub s3://${BucketName}/athena
+          CUR_PROCESSOR_DEST_S3_BUCKET: !Ref BucketName
+          CUR_PROCESSOR_DEST_S3_PREFIX: /cur-reports
+          AWS_ACCOUNT_METADATA_DDB_TABLE: !Ref AWSAccountMetadata
+          STEP_FUNCTION_PREPARE_CUR_ATHENA: !Sub arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:AWSCostUsageReport
+          SNS_TOPIC: !Ref CostUsageReportTopic
+          LAMBDA_OWNER_AWS_ACCESS_KEY_ID: !Ref AccessKey
+          LAMBDA_OWNER_AWS_SECRET_ACCESS_KEY: !Ref SecretAccessKey
       Tracing: Active
       Tags:
         stack: !Ref StackTag
@@ -169,9 +378,14 @@ Resources:
 
 Outputs:
   xAcctStepFunctionStarterFunction:
+    Condition: xAcctStepFunctionStarterEnabled
     Description: Lambda function that starts Step Function for processing CUR
     Value: !Ref xAcctStepFunctionStarter
     Export:
       Name: !Sub "${AWS::StackName}-xAcctStepFunctionStarterFunction"
 
+  BucketName: 
+    Value: !Ref CostUsageReport
 
+  ReportPathPrefix:
+    Value: aws-report/

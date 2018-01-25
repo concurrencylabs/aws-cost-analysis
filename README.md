@@ -114,22 +114,19 @@ Go to the ```scripts``` folder.
 
 There are 3 different operations available:
 
-**Prepare files for Athena **
+**Prepare files for Athena**
 
 This operation copies files from a destination S3 bucket, prepares the files and creates
 an Athena database and table, so they can be queried using Athena (remove reportId hash, remove manifest files, etc.). 
 
-
-```
+```bash
 python report_utils.py --action=prepare-athena --source-bucket=<s3-bucket-with-cost-usage-reports> --source-prefix=<folder>/ --dest-bucket=<s3-bucket-athena-will-read-files-from> --dest-prefix=<folder>/ --year=<year-in-4-digits> --month=<month-in-1-or-2-digits>
 ```
 
 Keep in mind that AWS creates Cost and Usage files daily, therefore you must execute this
-script daily if you want to have the latest billing data in Athena.  
-
+script daily if you want to have the latest billing data in Athena.
 
 **Prepare QuickSight manifest**
-
 
 If you want to upload files to QuickSight, you must provide a manifest file. The manifest file essentially
 lists the location of the data files, so QuickSight can find them and load them. The source-bucket and source-prefix parameter
@@ -139,8 +136,7 @@ AWS gives you the option to create QuickSight manifests when you configure Cost 
 AWS creates the QuickSight manifest only at the end of the month. That's why I added this option in the script, so you can generate a QuickSight
 manifest anytime you want.
 
-
-```
+```bash
 python report_utils.py --source-bucket=<s3-bucket-for-quicksight-files> --source-prefix=<folder>/ --action=create-manifest --manifest-type=quicksight --year=<year-in-4-digits> --month=<month-in-1-or-2-digits>
 ```
 
@@ -148,11 +144,9 @@ python report_utils.py --source-bucket=<s3-bucket-for-quicksight-files> --source
 
 As a bonus, if you want to upload files in QuickSight using a Redshift manifest, the script creates one for you.
 
-```
+```bash
 python report_utils.py --source-bucket=<s3-bucket-for-quicksight-files> --source-prefix=<folder>/ --action=create-manifest --manifest-type=redshift --year=<year-in-4-digits> --month=<month-in-1-or-2-digits>
 ```
-
-
 
 ## Example: Using Athena for AWS Cost and Usage report analysis
 
@@ -163,7 +157,7 @@ python report_utils.py --source-bucket=<s3-bucket-for-quicksight-files> --source
 
 Make sure you have IAM permissions, environment variables are set and AWS Cost and Usage reports are ready in source-bucket. Then execute:
 
-```
+```bash
 python report_utils.py --action=prepare-athena --source-bucket=<s3-bucket-with-cost-usage-reports> --source-prefix=<folder>/ --dest-bucket=<s3-bucket-athena-will-read-files-from> --dest-prefix=<folder>/ --year=<year-in-4-digits> --month=<month-in-1-or-2-digits>
 ```
 
@@ -171,8 +165,7 @@ The script also creates an Athena database with the format `costusage_<awsaccoun
 `hourly_<month_range>`
 
 **3. Execute queries against your AWS Cost and Usage data!**
-That's it! Now you can query your AWS Cost and Usage data! You can use the sample queries in <a href="https://github.com/ConcurrenyLabs/aws-cost-analysis/blob/master/awscostusageprocessor/sql/athena_queries.sql" target="new">**athena_queries.sql**</a>
-
+That's it! Now you can query your AWS Cost and Usage data! You can use the sample queries in [**athena_queries.sql**](https://github.com/ConcurrenyLabs/aws-cost-analysis/blob/master/awscostusageprocessor/sql/athena_queries.sql)
 
 ## Serverless Application Model Stack(optional)
 
@@ -196,9 +189,9 @@ increases performance and reduces cost.
 Updates a DDB table with the latest execution timestamp. This
 information is used by:
 
-- The processes that decide whether to query from Athena or from S3.
-- Step Function starter, in order to decide if a new execution should be triggered.
-- Any application that consumes Cost and Usage data and needs to know when a new report has been processed
+* The processes that decide whether to query from Athena or from S3.
+* Step Function starter, in order to decide if a new execution should be triggered.
+* Any application that consumes Cost and Usage data and needs to know when a new report has been processed
 
 **s3event-step-function-starter.py**
 This function receives an S3 PUT event when a new AWS Cost and Usage
@@ -235,20 +228,51 @@ optionally `xAccountSource` (Boolean), and `roleArn` if you're analyzing
 Cost and Usage reports cross-account.
 
 
+### Deploy
 
+Before you can deploy the Serverless Application Model Stack you need to create a virtual environment and install all the requirements:
 
+```bash
+# Create a virtual environment and install the requirements
+virtualenv ./
+source ./bin/activate
+pip install -r requirements.txt
+```
 
+You can deploy the AWS cost analysis and optimization in your AWS Account using the following commands:
 
+```bash
+# Set the environment variable correct for your environment
+AWS_REGION=us-east-1
+BUCKET=my-s3-bucket # Used for the package command not the billing bucket
+NAME=curprocessor-sam
+BILLING_BUCKET_NAME=[BUCKET_NAME]
 
+# Package the template and functions
+sam package \
+  --template-file cloudformation/curprocessor-sam.yml \
+  --output-template-file cloudformation/curprocessor-sam-packaged.yml \
+  --s3-bucket ${BUCKET} \
+  --s3-prefix ${NAME}
 
+# Deploy the Serverless AWS Cost Analysis in your account
+sam deploy \
+  --template-file cloudformation/curprocessor-sam-packaged.yml \
+  --region ${AWS_REGION} \
+  --stack-name ${NAME} \
+  --capabilities CAPABILITY_IAM \
+  --parameter-overrides \
+      StackTag=${NAME} \
+      BucketName=${BILLING_BUCKET_NAME} \
+      xAccountStarter=Disabled \
+      CloudWatchRetention=7
+```
 
+### Configure
 
-
-
-
-
-
-
-
+* Configure a S3 Event that invokes the `S3EventStepFunctionStarter` function when a PUT is done on the S3 bucket that receives the CUR reports.
+  * Events: Put
+  * Prefix: Match your path
+  * Suffix: `Manifest.json`
 
 
