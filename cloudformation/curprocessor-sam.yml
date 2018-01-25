@@ -171,7 +171,7 @@ Resources:
         Variables:
           ATHENA_BASE_OUTPUT_S3_BUCKET: !Sub s3://${CostUsageReport}/athena
           CUR_PROCESSOR_DEST_S3_BUCKET: !Ref CostUsageReport
-          CUR_PROCESSOR_DEST_S3_PREFIX: /cur-reports
+          CUR_PROCESSOR_DEST_S3_PREFIX: cur-reports
           AWS_ACCOUNT_METADATA_DDB_TABLE: !Ref AWSAccountMetadata
           STEP_FUNCTION_PREPARE_CUR_ATHENA: !Sub arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:AWSCostUsageReport
           SNS_TOPIC: !Ref CostUsageReportTopic
@@ -219,7 +219,7 @@ Resources:
         Variables:
           ATHENA_BASE_OUTPUT_S3_BUCKET: !Sub s3://${BucketName}/athena
           CUR_PROCESSOR_DEST_S3_BUCKET: !Ref BucketName
-          CUR_PROCESSOR_DEST_S3_PREFIX: /cur-reports
+          CUR_PROCESSOR_DEST_S3_PREFIX: cur-reports
           AWS_ACCOUNT_METADATA_DDB_TABLE: !Ref AWSAccountMetadata
           STEP_FUNCTION_PREPARE_CUR_ATHENA: !Sub arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:AWSCostUsageReport
           SNS_TOPIC: !Ref CostUsageReportTopic
@@ -252,7 +252,7 @@ Resources:
         Variables:
           ATHENA_BASE_OUTPUT_S3_BUCKET: !Sub s3://${BucketName}/athena
           CUR_PROCESSOR_DEST_S3_BUCKET: !Ref BucketName
-          CUR_PROCESSOR_DEST_S3_PREFIX: /cur-reports
+          CUR_PROCESSOR_DEST_S3_PREFIX: cur-reports
           AWS_ACCOUNT_METADATA_DDB_TABLE: !Ref AWSAccountMetadata
           STEP_FUNCTION_PREPARE_CUR_ATHENA: !Sub arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:AWSCostUsageReport
           SNS_TOPIC: !Ref CostUsageReportTopic
@@ -287,7 +287,7 @@ Resources:
         Variables:
           ATHENA_BASE_OUTPUT_S3_BUCKET: !Sub s3://${BucketName}/athena
           CUR_PROCESSOR_DEST_S3_BUCKET: !Ref BucketName
-          CUR_PROCESSOR_DEST_S3_PREFIX: /cur-reports
+          CUR_PROCESSOR_DEST_S3_PREFIX: cur-reports
           AWS_ACCOUNT_METADATA_DDB_TABLE: !Ref AWSAccountMetadata
           STEP_FUNCTION_PREPARE_CUR_ATHENA: !Sub arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:AWSCostUsageReport
           SNS_TOPIC: !Ref CostUsageReportTopic
@@ -322,7 +322,7 @@ Resources:
         Variables:
           ATHENA_BASE_OUTPUT_S3_BUCKET: !Sub s3://${BucketName}/athena
           CUR_PROCESSOR_DEST_S3_BUCKET: !Ref BucketName
-          CUR_PROCESSOR_DEST_S3_PREFIX: /cur-reports
+          CUR_PROCESSOR_DEST_S3_PREFIX: cur-reports
           AWS_ACCOUNT_METADATA_DDB_TABLE: !Ref AWSAccountMetadata
           STEP_FUNCTION_PREPARE_CUR_ATHENA: !Sub arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:AWSCostUsageReport
           SNS_TOPIC: !Ref CostUsageReportTopic
@@ -355,7 +355,7 @@ Resources:
         Variables:
           ATHENA_BASE_OUTPUT_S3_BUCKET: !Sub s3://${BucketName}/athena
           CUR_PROCESSOR_DEST_S3_BUCKET: !Ref BucketName
-          CUR_PROCESSOR_DEST_S3_PREFIX: /cur-reports
+          CUR_PROCESSOR_DEST_S3_PREFIX: cur-reports
           AWS_ACCOUNT_METADATA_DDB_TABLE: !Ref AWSAccountMetadata
           STEP_FUNCTION_PREPARE_CUR_ATHENA: !Sub arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:AWSCostUsageReport
           SNS_TOPIC: !Ref CostUsageReportTopic
