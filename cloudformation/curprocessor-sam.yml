@@ -217,7 +217,7 @@ Resources:
               S3Key:
                 Rules:
                   - Name: prefix
-                    Value: aws-reports/
+                    Value: !Sub '${ReportPathPrefix}/'
                   - Name: suffix
                     Value: Manifest.json
       Environment:
