@@ -265,8 +265,12 @@ sam deploy \
       StackTag=${NAME} \
       BucketName=${BILLING_BUCKET_NAME} \
       xAccountStarter=Disabled \
-      CloudWatchRetention=7
+      CloudWatchRetention=7 \
+      ReportPathPrefix=aws-reports \
+      CreateLogGroups=Enabled
 ```
+
+> NOTE: If you are updating your existing stack and it fails due to the fact that you already have existing LogGroups you can delete them and re-deploy if possible or set the `CreateLogGroups` parameter to `Disabled`.
 
 ### Configure
 

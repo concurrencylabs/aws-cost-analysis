@@ -12,7 +12,7 @@ Parameters:
     Description: "Do you want to enable the xAcctStepFunctionStarter function?"
     Type: String
     Default: "Disabled"
-    AllowedValues: [ "Disabled", "Enabled" ] # Custom for Enterprise
+    AllowedValues: [ "Disabled", "Enabled" ]
     
   BucketName:
     Description: The name of the bucket that we will use for the reporting.
@@ -28,6 +28,12 @@ Parameters:
     Type: String
     Default: 7
 
+  CreateLogGroups:
+    Description: "Create LogGroups so that you have control over the LogRetention"
+    Type: String
+    Default: "Enabled"
+    AllowedValues: [ "Disabled", "Enabled" ]
+
   AccessKey:
     Description: "<aws-iam-key-id-(only-used-in-cross-account-scenarios)>"
     Type: String
@@ -41,7 +47,9 @@ Parameters:
 
 Conditions:
   xAcctStepFunctionStarterEnabled: !Equals [!Ref xAccountStarter, 'Enabled']
-
+  xAcctStepLogGroupsEnabled: !And [ !Equals [!Ref xAccountStarter, 'Enabled'], !Equals [!Ref CreateLogGroups, 'Enabled'] ]
+  LogGroupsEnabled: !Equals [!Ref CreateLogGroups, 'Enabled']
+  
 Resources:
 
   CostUsageReportTopic:
@@ -134,7 +142,7 @@ Resources:
           }
 
   xAcctStepFunctionStarterLogGroup:
-    Condition: xAcctStepFunctionStarterEnabled
+    Condition: xAcctStepLogGroupsEnabled
     Type: AWS::Logs::LogGroup
     DependsOn: [ xAcctStepFunctionStarter ]
     Properties:
@@ -187,6 +195,7 @@ Resources:
         stack: !Ref StackTag
 
   S3EventStepFunctionStarterLogGroup:
+    Condition: LogGroupsEnabled
     Type: AWS::Logs::LogGroup
     DependsOn: [ S3EventStepFunctionStarter ]
     Properties:
@@ -217,7 +226,7 @@ Resources:
               S3Key:
                 Rules:
                   - Name: prefix
-                    Value: aws-reports/
+                    Value: !Sub '${ReportPathPrefix}/'
                   - Name: suffix
                     Value: Manifest.json
       Environment:
@@ -235,6 +244,7 @@ Resources:
         stack: !Ref StackTag
 
   ProcessCostUsageFunctionLogGroup:
+    Condition: LogGroupsEnabled
     Type: AWS::Logs::LogGroup
     DependsOn: [ ProcessCostUsageFunction ]
     Properties:
@@ -268,6 +278,7 @@ Resources:
         stack: !Ref StackTag
 
   CreateAthenaResourcesFunctionLogGroup:
+    Condition: LogGroupsEnabled
     Type: AWS::Logs::LogGroup
     DependsOn: [ CreateAthenaResourcesFunction ]
     Properties:
@@ -303,6 +314,7 @@ Resources:
         stack: !Ref StackTag
 
   InitializeAthenaQueriesFunctionLogGroup:
+    Condition: LogGroupsEnabled
     Type: AWS::Logs::LogGroup
     DependsOn: [ InitializeAthenaQueriesFunction ]
     Properties:
@@ -338,6 +350,7 @@ Resources:
         stack: !Ref StackTag
 
   UpdateMetadataFunctionLogGroup:
+    Condition: LogGroupsEnabled
     Type: AWS::Logs::LogGroup
     DependsOn: [ UpdateMetadataFunction ]
     Properties:
