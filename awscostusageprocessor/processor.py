@@ -53,6 +53,7 @@ class CostUsageProcessor():
 
         #self.accountId = args.get('accountId','')
 
+        self.latest_manifest_key = self.get_latest_aws_manifest_key()
         self.curManifestJson = self.get_aws_manifest_content()
 
         if not self.accountId:
@@ -229,9 +230,8 @@ class CostUsageProcessor():
     """
     def get_aws_manifest_content(self):
         result = {}
-        manifest_key = self.get_latest_aws_manifest_key()
-        print "Getting manifest file JSON content - bucket: [{}] - key: [{}]".format(self.sourceBucket, manifest_key)
-        response = self.s3sourceclient.get_object(Bucket=self.sourceBucket, Key=manifest_key)
+        print "Getting manifest file JSON content - bucket: [{}] - key: [{}]".format(self.sourceBucket, self.latest_manifest_key)
+        response = self.s3sourceclient.get_object(Bucket=self.sourceBucket, Key=self.latest_manifest_key)
         if 'Body' in response:
             result = json.loads(response['Body'].read())
         return result

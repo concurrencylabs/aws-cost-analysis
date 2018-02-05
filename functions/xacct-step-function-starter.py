@@ -65,7 +65,7 @@ def handler(event, context):
         kwargs['sourceBucket'] = item['curBucket']
         kwargs['sourcePrefix'] = "{}{}/".format(item['curPrefix'],item['curName']) #TODO: move to a common function
         kwargs['destBucket'] = consts.CUR_PROCESSOR_DEST_S3_BUCKET
-        kwargs['destPrefix']= '{}{}/'.format(consts.CUR_PROCESSOR_DEST_S3_PREFIX, item['awsPayerAccountId'])
+        kwargs['destPrefix']= consts.CUR_PROCESSOR_DEST_S3_PREFIX
         kwargs['accountId'] = item['awsPayerAccountId']
         kwargs['xAccountSource']=True
         kwargs['roleArn'] = item['roleArn']

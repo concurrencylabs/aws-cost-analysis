@@ -201,34 +201,16 @@ have to manually configure the S3 event so it points to this function.
 Under the `cloudformation` folder:
 
 **cloudformation/process-cur-sam.yml**
-Serverless Application Model definition to deploy all Lambda functions
+Serverless Application Model definition to deploy all Lambda functions. This template automates the creation of:
+
+* S3 bucket where AWS Cost and Usage reports will be placed
+* All relevant Lambda functions
+* Step Function that executes Lambda functions in the right order.
+* S3 Event that will automatically trigger the Step Function as soon as a new Cost
+and Usage report is placed by AWS in the S3 bucket.
 
 
-### Automating and Orchestrating Executions using AWS Step Functions
-
-You can arrange the Lambda functions above and automate their execution. All you have
-to do is to create a State Function that calls the relevant Lambda functions.
-
-The Step Function is defined in the following file:
-
-**functions/step-function-athena.json**
-Step Function definition to automate the daily processing of CUR files and
-creation of Athena resources.
-
-**Starting the Step Function**
-
-You can set up an S3 event in the S3 Bucket where AWS places incoming Cost and Usage reports.
-This event can trigger Lambda function `s3event-step-function-starter.py`, which
-sets all the relevant parameters for the Step Function.
- 
-If you prefer an alternate method to start the Step Function, just make sure
-that it sends a dictionary with the following values in it: `year`, `month`,
-`sourceBucket`, `sourcePrefix`, `destBucket`, `destPrefix`, `accountId` and
-optionally `xAccountSource` (Boolean), and `roleArn` if you're analyzing
-Cost and Usage reports cross-account.
-
-
-### Deploy
+### Automated Deployment using Serverless Application Model (recommended)
 
 Before you can deploy the Serverless Application Model Stack you need to create a virtual environment and install all the requirements:
 
@@ -264,19 +246,37 @@ sam deploy \
   --parameter-overrides \
       StackTag=${NAME} \
       BucketName=${BILLING_BUCKET_NAME} \
-      xAccountStarter=Disabled \
       CloudWatchRetention=7 \
-      ReportPathPrefix=aws-reports \
+      ReportPathPrefix=aws-reports/ \
       CreateLogGroups=Enabled
 ```
 
 > NOTE: If you are updating your existing stack and it fails due to the fact that you already have existing LogGroups you can delete them and re-deploy if possible or set the `CreateLogGroups` parameter to `Disabled`.
 
-### Configure
 
-* Configure a S3 Event that invokes the `S3EventStepFunctionStarter` function when a PUT is done on the S3 bucket that receives the CUR reports.
+
+### Manual Deployment
+
+If you prefer to setup all components manually, you can arrange the Lambda functions above and automate their execution. All you have
+to do is to create a State Function that calls the relevant Lambda functions.
+
+The Step Function is defined in the following file:
+
+**functions/step-function-athena.json**
+Step Function definition to automate the daily processing of CUR files and
+creation of Athena resources.
+
+**Starting the Step Function**
+
+Configure a S3 Event that invokes the `S3EventStepFunctionStarter` function when a PUT is done on the S3 bucket that receives the CUR reports.
   * Events: Put
   * Prefix: Match your path
   * Suffix: `Manifest.json`
 
+ 
+If you prefer an alternate method to start the Step Function, just make sure
+that it sends a dictionary with the following values in it: `year`, `month`,
+`sourceBucket`, `sourcePrefix` (with a '/' at the end), `destBucket`, `destPrefix`, `accountId` and
+optionally `xAccountSource` (Boolean), and `roleArn` if you're analyzing
+Cost and Usage reports cross-account.
 

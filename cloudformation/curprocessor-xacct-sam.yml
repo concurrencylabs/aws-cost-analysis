@@ -13,7 +13,7 @@ Parameters:
     Type: String
 
   ReportPathPrefix:
-    Description: "The path prefix that will be used for the AWS Report delivery. Make sure it ends in '/'"
+    Description: The path prefix that will be used for the AWS Report delivery.
     Type: String
     Default: aws-reports
 
@@ -28,6 +28,16 @@ Parameters:
     Default: "Enabled"
     AllowedValues: [ "Disabled", "Enabled" ]
 
+  AccessKey:
+    Description: "<aws-iam-key-id-(only-used-in-cross-account-scenarios)>"
+    Type: String
+    Default: ""
+    
+  SecretAccessKey:
+    Description: "<secret-access-key-(only-used-in-cross-account-scenarios)>"
+    NoEcho: true
+    Type: String
+    Default: ""
 
 Conditions:
   LogGroupsEnabled: !Equals [!Ref CreateLogGroups, 'Enabled']
@@ -36,35 +46,6 @@ Resources:
 
   CostUsageReportTopic:
     Type: AWS::SNS::Topic
-
-  CostUsageReport:
-    Type: AWS::S3::Bucket
-    Properties:
-      AccessControl: Private
-      BucketName: !Ref BucketName
-
-  CostUsageReportBucketPolicy:
-    Type: AWS::S3::BucketPolicy
-    Properties:
-      Bucket: !Ref CostUsageReport
-      PolicyDocument:
-        Id: AllowLogDelivery
-        Version: 2012-10-17
-        Statement:
-          - Effect: Allow
-            Principal:
-              AWS: "arn:aws:iam::386209384616:root"
-            Resource: !Sub ${CostUsageReport.Arn}
-            Action:
-              - s3:GetBucketAcl
-              - s3:GetBucketPolicy
-          - Effect: Allow
-            Principal:
-              AWS: "arn:aws:iam::386209384616:root"
-            Resource:
-              - !Sub ${CostUsageReport.Arn}/${ReportPathPrefix}*
-              - !Sub ${CostUsageReport.Arn}/aws-programmatic-access-test-object
-            Action: s3:PutObject
 
 
   StepFunctionsRole:
@@ -94,7 +75,7 @@ Resources:
   PrepareCurAthenaStepFunction:
     Type: AWS::StepFunctions::StateMachine
     Properties:
-      StateMachineName: !Sub '${AWS::StackName}-PrepareCurAthenaS3Event'
+      StateMachineName: !Sub '${AWS::StackName}-PrepareCurAthenaxAcct'
       RoleArn: !GetAtt StepFunctionsRole.Arn
       DefinitionString: !Sub |
           {
@@ -124,53 +105,57 @@ Resources:
             }
           }
 
-  S3EventStepFunctionStarterLogGroup:
+  xAcctStepFunctionStarterLogGroup:
     Condition: LogGroupsEnabled
     Type: AWS::Logs::LogGroup
-    DependsOn: [ S3EventStepFunctionStarter ]
+    DependsOn: [ xAcctStepFunctionStarter ]
     Properties:
-      LogGroupName: !Sub /aws/lambda/${S3EventStepFunctionStarter}
+      LogGroupName: !Sub /aws/lambda/${xAcctStepFunctionStarter}
       RetentionInDays: !Ref CloudWatchRetention
 
-  S3EventStepFunctionStarter:
+  xAcctStepFunctionStarter:
     Type: AWS::Serverless::Function
     Properties:
-      Handler: functions/s3event-step-function-starter.handler
+      Handler: functions/xacct-step-function-starter.handler
       Runtime: python2.7
       Policies:
         - AWSLambdaBasicExecutionRole
         - AWSStepFunctionsFullAccess
         - AmazonSNSFullAccess
         - AmazonS3FullAccess
+        - AmazonDynamoDBFullAccess
         - AWSXrayFullAccess
-      Timeout: 30
-      MemorySize: 128
+        - PolicyDocument:
+            Statement:
+            - Action:
+              - 'iam:PassRole'
+              - 'iam:AssumeRole'
+              Effect: Allow
+              Resource:
+              - '*'
+            Version: '2012-10-17'
+          PolicyName: AssumeRolePolicy
+      Timeout: 120
+      MemorySize: 512
       CodeUri: ../
       Events:
-        Manifests:
-          Type: S3
+        Timer:
+          Type: Schedule
           Properties:
-            Bucket: !Ref CostUsageReport
-            Events: s3:ObjectCreated:*
-            Filter:
-              S3Key:
-                Rules:
-                  - Name: prefix
-                    Value: !Sub '${ReportPathPrefix}'
-                  - Name: suffix
-                    Value: Manifest.json
+            Schedule: rate(5 minutes)
       Environment:
         Variables:
           ATHENA_BASE_OUTPUT_S3_BUCKET: !Sub s3://${BucketName}/athena
           CUR_PROCESSOR_DEST_S3_BUCKET: !Ref BucketName
           CUR_PROCESSOR_DEST_S3_PREFIX: !Ref ReportPathPrefix
           AWS_ACCOUNT_METADATA_DDB_TABLE: !Ref AWSAccountMetadata
-          STEP_FUNCTION_PREPARE_CUR_ATHENA: !Sub arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:${AWS::StackName}-PrepareCurAthenaS3Event
+          STEP_FUNCTION_PREPARE_CUR_ATHENA: !Sub arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:${AWS::StackName}-PrepareCurAthenaxAcct
           SNS_TOPIC: !Ref CostUsageReportTopic
+          LAMBDA_OWNER_AWS_ACCESS_KEY_ID: !Ref AccessKey
+          LAMBDA_OWNER_AWS_SECRET_ACCESS_KEY: !Ref SecretAccessKey
       Tracing: Active
       Tags:
         stack: !Ref StackTag
-
 
   ProcessCostUsageFunctionLogGroup:
     Condition: LogGroupsEnabled
@@ -198,8 +183,10 @@ Resources:
           CUR_PROCESSOR_DEST_S3_BUCKET: !Ref BucketName
           CUR_PROCESSOR_DEST_S3_PREFIX: !Ref ReportPathPrefix
           AWS_ACCOUNT_METADATA_DDB_TABLE: !Ref AWSAccountMetadata
-          STEP_FUNCTION_PREPARE_CUR_ATHENA: !Sub arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:${AWS::StackName}-PrepareCurAthenaS3Event
+          STEP_FUNCTION_PREPARE_CUR_ATHENA: !Sub arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:${AWS::StackName}-PrepareCurAthenaxAcct
           SNS_TOPIC: !Ref CostUsageReportTopic
+          LAMBDA_OWNER_AWS_ACCESS_KEY_ID: !Ref AccessKey
+          LAMBDA_OWNER_AWS_SECRET_ACCESS_KEY: !Ref SecretAccessKey
       Tracing: Active
       Tags:
         stack: !Ref StackTag
@@ -232,8 +219,10 @@ Resources:
           CUR_PROCESSOR_DEST_S3_BUCKET: !Ref BucketName
           CUR_PROCESSOR_DEST_S3_PREFIX: !Ref ReportPathPrefix
           AWS_ACCOUNT_METADATA_DDB_TABLE: !Ref AWSAccountMetadata
-          STEP_FUNCTION_PREPARE_CUR_ATHENA: !Sub arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:${AWS::StackName}-PrepareCurAthenaS3Event
+          STEP_FUNCTION_PREPARE_CUR_ATHENA: !Sub arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:${AWS::StackName}-PrepareCurAthenaxAcct
           SNS_TOPIC: !Ref CostUsageReportTopic
+          LAMBDA_OWNER_AWS_ACCESS_KEY_ID: !Ref AccessKey
+          LAMBDA_OWNER_AWS_SECRET_ACCESS_KEY: !Ref SecretAccessKey
       Tracing: Active
       Tags:
         stack: !Ref StackTag
@@ -266,8 +255,10 @@ Resources:
           CUR_PROCESSOR_DEST_S3_BUCKET: !Ref BucketName
           CUR_PROCESSOR_DEST_S3_PREFIX: !Ref ReportPathPrefix
           AWS_ACCOUNT_METADATA_DDB_TABLE: !Ref AWSAccountMetadata
-          STEP_FUNCTION_PREPARE_CUR_ATHENA: !Sub arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:${AWS::StackName}-PrepareCurAthenaS3Event
+          STEP_FUNCTION_PREPARE_CUR_ATHENA: !Sub arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:${AWS::StackName}-PrepareCurAthenaxAcct
           SNS_TOPIC: !Ref CostUsageReportTopic
+          LAMBDA_OWNER_AWS_ACCESS_KEY_ID: !Ref AccessKey
+          LAMBDA_OWNER_AWS_SECRET_ACCESS_KEY: !Ref SecretAccessKey
       Tracing: Active
       Tags:
         stack: !Ref StackTag
@@ -298,8 +289,10 @@ Resources:
           CUR_PROCESSOR_DEST_S3_BUCKET: !Ref BucketName
           CUR_PROCESSOR_DEST_S3_PREFIX: !Ref ReportPathPrefix
           AWS_ACCOUNT_METADATA_DDB_TABLE: !Ref AWSAccountMetadata
-          STEP_FUNCTION_PREPARE_CUR_ATHENA: !Sub arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:${AWS::StackName}-PrepareCurAthenaS3Event
+          STEP_FUNCTION_PREPARE_CUR_ATHENA: !Sub arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:${AWS::StackName}-PrepareCurAthenaxAcct
           SNS_TOPIC: !Ref CostUsageReportTopic
+          LAMBDA_OWNER_AWS_ACCESS_KEY_ID: !Ref AccessKey
+          LAMBDA_OWNER_AWS_SECRET_ACCESS_KEY: !Ref SecretAccessKey
       Tracing: Active
       Tags:
         stack: !Ref StackTag
@@ -311,20 +304,20 @@ Resources:
         Name: awsPayerAccountId
         Type: String
       ProvisionedThroughput:
-        ReadCapacityUnits: 1
-        WriteCapacityUnits: 1
+        ReadCapacityUnits: 5
+        WriteCapacityUnits: 5
 
 
 Outputs:
-  S3EventStepFunctionStarterFunction:
-    Description: Lambda function that gets event from S3 when a new CUR is available and starts Step Function for processing CUR.
-    Value: !Ref S3EventStepFunctionStarter
+  xAcctStepFunctionStarterFunction:
+    Description: Lambda function that starts Step Function for processing CUR for other AWS accounts
+    Value: !Ref xAcctStepFunctionStarter
     Export:
-      Name: !Sub "${AWS::StackName}-S3EventStepFunctionStarterFunction"
+      Name: !Sub "${AWS::StackName}-xAcctStepFunctionStarterFunction"
 
-  BucketName: 
+  BucketName:
     Description: The S3 Bucket name that must be used for the AWS Report delivery.
-    Value: !Ref CostUsageReport
+    Value: !Ref BucketName
 
   ReportPathPrefix:
     Description: The path prefix that must be used for the AWS Report delivery.
