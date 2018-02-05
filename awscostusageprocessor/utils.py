@@ -1,5 +1,5 @@
 #!/usr/bin/python
-
+import re
 
 def is_valid_prefix(prefix):
     result = True
@@ -38,20 +38,23 @@ A report key comes in the following format:
 
 def extract_period(s3key):
     dirs = s3key.split('/')
-    period = dirs[len(dirs)-3]
-
     prefix = ""
-    for d in dirs[0:len(dirs)-3]:
+    year = ""
+    month = ""
+    periodregex = r"[0-9]{8}-[0-9]{8}"
+
+    for d in dirs:
+        if re.search(periodregex, d):
+            period = d
+            year = period[0:4]
+            month = period[4:6]
+            break
         prefix += d+"/"
 
-    year = period[0:4]
-    month = period[4:6]
-
     print("s3 key [{}]".format(s3key))
-    print("dirs [{}]".format(dirs))
     print("prefix [{}] year [{}] month [{}]".format(prefix, year, month))
-    return prefix, year, month
 
+    return prefix, year, month
 
 
 

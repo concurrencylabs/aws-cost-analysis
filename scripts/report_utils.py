@@ -76,7 +76,7 @@ def main(argv):
       athena = ath.AthenaQueryMgr("s3://"+curprocessor.destBucket, curprocessor.accountId, curprocessor.year, curprocessor.month)
       athena.create_database()
       athena.drop_table()#drops the table for the current month (before creating a new one)
-      curS3Prefix = curprocessor.destPrefix + "/" + curutils.get_period_prefix(curprocessor.year, curprocessor.month)
+      curS3Prefix = curprocessor.destPrefix + curprocessor.accountId + "/" + curutils.get_period_prefix(curprocessor.year, curprocessor.month)
       print ("Creating Athena table for S3 location [s3://{}/{}]".format(curprocessor.destBucket,curS3Prefix))
       athena.create_table(curprocessor.curManifestJson, curprocessor.destBucket, curS3Prefix)
 

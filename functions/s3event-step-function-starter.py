@@ -44,31 +44,35 @@ def handler(event, context):
         kwargs['sourceBucket'] = s3eventinfo['bucket']['name']
         kwargs['sourcePrefix'] = sourcePrefix
         kwargs['destBucket'] = consts.CUR_PROCESSOR_DEST_S3_BUCKET
-        kwargs['destPrefix']= '{}placeholder/'.format(consts.CUR_PROCESSOR_DEST_S3_PREFIX)#placeholder is to avoid validation error when instantiating CostUsageProcessor
+        kwargs['destPrefix']= '{}'.format(consts.CUR_PROCESSOR_DEST_S3_PREFIX)
 
         curprocessor = cur.CostUsageProcessor(**kwargs)
         curprocessor.destPrefix = '{}{}/'.format(consts.CUR_PROCESSOR_DEST_S3_PREFIX, curprocessor.accountId)
 
         kwargs['accountId'] = curprocessor.accountId
 
-        #Start execution
-        period = utils.get_period_prefix(year,month).replace('/','')
-        execname = "{}-{}-{}".format(curprocessor.accountId, period, hashlib.md5(str(time.time()).encode("utf-8")).hexdigest()[:8])
+        #This validation is necessary because AWS places two identical manifest files, one inside the hash folder and one at the top level of the period folder.
+        #Without this validation, the function would unnecessarily start two Step Function executions.
+        if s3key == curprocessor.latest_manifest_key:
+            #Start execution
+            period = utils.get_period_prefix(year,month).replace('/','')
+            execname = "{}-{}-{}".format(curprocessor.accountId, period, hashlib.md5(str(time.time()).encode("utf-8")).hexdigest()[:8])
 
-        sfnresponse = sfnclient.start_execution(stateMachineArn=consts.STEP_FUNCTION_PREPARE_CUR_ATHENA,
-                                             name=execname,
-                                             input=json.dumps(kwargs))
+            sfnresponse = sfnclient.start_execution(stateMachineArn=consts.STEP_FUNCTION_PREPARE_CUR_ATHENA,
+                                                 name=execname,
+                                                 input=json.dumps(kwargs))
 
-        #Prepare SNS notification
-        sfn_executionarn = sfnresponse['executionArn']
-        sfn_executionlink = 'https://console.aws.amazon.com/states/home?region=us-east-1#/executions/details/'+sfn_executionarn
-        snsclient.publish(TopicArn=consts.SNS_TOPIC,
-                          Message='New Cost and Usage report. Started execution. Click here to view status:'+sfn_executionlink,
-                          Subject='New incoming Cost and Usage report - accountid:{} - period:{}'.format(curprocessor.accountId, period))
+            #Prepare SNS notification
+            sfn_executionarn = sfnresponse['executionArn']
+            sfn_executionlink = 'https://console.aws.amazon.com/states/home?region=us-east-1#/executions/details/'+sfn_executionarn
+            snsclient.publish(TopicArn=consts.SNS_TOPIC,
+                              Message='New Cost and Usage report. Started execution. Click here to view status:'+sfn_executionlink,
+                              Subject='New incoming Cost and Usage report - accountid:{} - period:{}'.format(curprocessor.accountId, period))
 
-        log.info("Started execution - executionArn: {}".format(sfn_executionarn))
-
-        return execname
+            log.info("Started execution - executionArn: {}".format(sfn_executionarn))
+            return execname
+        else:
+            log.info("Received manifest [{}] - do not start Step Function execution".format(s3key))
 
 
     except Exception as e:
