@@ -10,6 +10,7 @@ sys.path.append(site_pkgs)
 import awscostusageprocessor.utils as utils
 import awscostusageprocessor.sql.athena as ath
 import awscostusageprocessor.consts as consts
+from awscostusageprocessor.errors import AthenaExecutionFailedException
 
 log = logging.getLogger()
 log.setLevel(logging.INFO)
@@ -34,18 +35,25 @@ def handler(event, context):
     if 'xAccountSource' in event: event['xAccountSource']=False
     if 'roleArn' in event: event['roleArn'] = ''
 
-    athena = ath.AthenaQueryMgr(consts.ATHENA_BASE_OUTPUT_S3_BUCKET, accountid, year, month)
+    try:
+        athena = ath.AthenaQueryMgr(consts.ATHENA_BASE_OUTPUT_S3_BUCKET, accountid, year, month)
 
-    #construct database name based on input parameters: costusage-accountid
-    athena.create_database()
+        #construct database name based on input parameters: costusage-accountid
+        athena.create_database()
 
-    #drop table for the current month - 20170601-20170701
-    athena.drop_table()
+        #drop table for the current month - 20170601-20170701
+        athena.drop_table()
 
-    #TODO: use columnar format, for better performance
-    #create new table for the current month
-    curS3Prefix = consts.CUR_PROCESSOR_DEST_S3_PREFIX + accountid + "/" + utils.get_period_prefix(year, month)#TODO: move to a method in athena module, so it can be reused
-    athena.create_table(curManifest, curS3Bucket, curS3Prefix)
+        #TODO: use columnar format, for better performance
+        #create new table for the current month
+        curS3Prefix = consts.CUR_PROCESSOR_DEST_S3_PREFIX + accountid + "/" + utils.get_period_prefix(year, month)#TODO: move to a method in athena module, so it can be reused
+        athena.create_table(curManifest, curS3Bucket, curS3Prefix)
+
+    except AthenaExecutionFailedException as ae:
+        log.error(ae.message)
+        raise Exception("Failure when creating Athena resources: {}".format(ae.message))
+
+
 
     return event
 

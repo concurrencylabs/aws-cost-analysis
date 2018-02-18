@@ -136,6 +136,10 @@ class CostUsageProcessor():
                                     })
             destS3keys.append(finalS3Key)
 
+      #Remove temporary files. This is also important to avoid Lambda errors where the local Lambda storage can be easily reached after a few executions
+      os.remove(tmpLocalKey)
+      os.remove(finalLocalKey)
+
       return destS3keys
 
 

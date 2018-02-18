@@ -125,16 +125,13 @@ Resources:
         - AmazonS3FullAccess
         - AmazonDynamoDBFullAccess
         - AWSXrayFullAccess
-        - PolicyDocument:
-            Statement:
-            - Action:
+        - Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
               - 'iam:PassRole'
               - 'iam:AssumeRole'
-              Effect: Allow
-              Resource:
-              - '*'
-            Version: '2012-10-17'
-          PolicyName: AssumeRolePolicy
+            Resource: '*'
       Timeout: 120
       MemorySize: 512
       CodeUri: ../
@@ -314,6 +311,28 @@ Outputs:
     Value: !Ref xAcctStepFunctionStarter
     Export:
       Name: !Sub "${AWS::StackName}-xAcctStepFunctionStarterFunction"
+
+  CreateAthenaResourcesFunctionOutput:
+    Description: Lambda function that creates Athena databasees and tables when processing CUR.
+    Value: !Ref CreateAthenaResourcesFunction
+    Export:
+      Name: !Sub "${AWS::StackName}-CreateAthenaResourcesFunction"
+
+
+  InitializeAthenaQueriesFunctionOutput:
+    Description: Lambda function that initializes Athena queries, so that they can be accessed by the API from S3 and Athena doesn't need to be queried al the time.
+    Value: !Ref InitializeAthenaQueriesFunction
+    Export:
+      Name: !Sub "${AWS::StackName}-InitializeAthenaQueriesFunction"
+
+
+
+  PrepareCurAthenaStepFunctionArn:
+    Description: Step Function that processes Cost and Usage Reports for Athena
+    Value: !Ref PrepareCurAthenaStepFunction
+    Export:
+      Name: !Sub "${AWS::StackName}-PrepareCurAthenaStepFunctionArn"
+
 
   BucketName:
     Description: The S3 Bucket name that must be used for the AWS Report delivery.

@@ -8,6 +8,7 @@ import time, logging, json, datetime, pytz
 import boto3, botocore
 import awscostusageprocessor.utils as utils
 import awscostusageprocessor.consts as consts
+import awscostusageprocessor.errors as errors
 
 log = logging.getLogger()
 log.setLevel(logging.INFO)
@@ -40,21 +41,22 @@ class AthenaQueryMgr():
 
         #Database management queries such as create database, create table or drop table should always execute fresh
         if queryid in (consts.QUERY_ID_CREATE_DATABASE, consts.QUERY_ID_DROP_TABLE, consts.QUERY_ID_CREATE_TABLE):
-            runnew = True
+            runfresh = True
         else:
-            runnew, queryexecutionid = self.should_run_fresh(queryid)
+            runfresh, queryexecutionid = self.should_run_fresh(queryid)
 
         querystate = ''
-        if runnew:
+        if runfresh:
             log.info("Running fresh Athena query")
             start_query_response = athenaclient.start_query_execution(QueryString=querystring, ResultConfiguration=self.athena_result_configuration)
             queryexecutionid = self.get_queryexecutionid(start_query_response)
             log.info("QueryExecutionId: {}".format(queryexecutionid))
             self.create_query_metadata(queryid, queryexecutionid)
-            querystate = self.poll_query_state(queryexecutionid, 250)
+            querystate = self.poll_query_state(queryexecutionid, 500)
         else:
             log.info("Fetching results for query [{}] based on existing queryExecutionId: [{}]".format(queryid, queryexecutionid))
             querystate = self.poll_query_state(queryexecutionid, 1)
+
         return queryexecutionid, querystate
 
 
@@ -115,9 +117,10 @@ class AthenaQueryMgr():
             queryexecution = athenaclient.get_query_execution(QueryExecutionId=queryexecutionid)
             querystate = queryexecution['QueryExecution']['Status']['State']
             if querystate == consts.ATHENA_QUERY_STATE_FAILED:
+                querystatereason = ""
                 if 'StateChangeReason' in queryexecution['QueryExecution']['Status']:
                     querystatereason = queryexecution['QueryExecution']['Status']['StateChangeReason']
-                    log.info("querystate [{}] reason [{}]".format(querystate, querystatereason ))
+                raise errors.AthenaExecutionFailedException("AthenaExecutionFailedException reason [{}]".format(querystatereason))
             else:
                 log.info("querystate {}".format(querystate))
             if querystate in [consts.ATHENA_QUERY_STATE_FAILED,consts.ATHENA_QUERY_STATE_CANCELLED,consts.ATHENA_QUERY_STATE_SUCCEEDED]:break
@@ -165,7 +168,10 @@ class AthenaQueryMgr():
             column_type = 'string'
             #if c['name'].lower() in ('billingperiodstartdate','billingperiodenddate','usagestartdate','usageenddate'):
             #    column_type = 'timestamp'
-            querystring += "`{}_{}` {}".format(c['category'].lower(),c['name'].lower().replace(':','_'),column_type)
+            category = c['category']
+            name = c['name']
+            category, name = self.quote_uppercase(category, name)
+            querystring += "`{}_{}` {}".format(category,name.replace(':','_'),column_type)
             i += 1
         querystring += " )\n" \
                         " ROW FORMAT SERDE 'org.apache.hadoop.hive.serde2.OpenCSVSerde' \n" \
@@ -177,6 +183,24 @@ class AthenaQueryMgr():
                         "STORED AS TEXTFILE \n" \
                         "LOCATION 's3://{}/{}';".format(curS3Bucket,curS3Prefix)
         return querystring
+
+    """
+    Athena doesn't accept upper case fields. However, user-defined resource tags are case sensitive and they're included in
+    the CUR manifest as such. There are situations where users define the same tag with different letter case (e.g. MyTag, mytag):
+    Without making a distinction, the code would instruct Athena to create duplicate field names. For example,
+    if the customer has two tags, 'MyTag' and 'mytag', resourcetags_user_MyTag would turn into resourcetags_user_mytag,
+    creating a duplicate field name with resourcetags_user_mytag.
+    """
+    def quote_uppercase(self, category, name):
+        newname = ""
+        if category.lower() == "resourcetags" and name.find("user:")==0:
+            for n in name:
+                log.info("Evaluating: {}".format(n))
+                if n.isupper(): n = "__upper__" + n
+                newname += n
+        else: newname = name
+        return category.lower(), newname.lower()
+
 
 
     def create_database(self):

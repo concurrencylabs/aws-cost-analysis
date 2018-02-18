@@ -4,6 +4,9 @@ class ValidationError(Exception):
         self.message = message
 
 class ManifestNotFoundError(Exception):
+    def __init__(self, message):
+        self.message = message
 
+class AthenaExecutionFailedException(Exception):
     def __init__(self, message):
         self.message = message

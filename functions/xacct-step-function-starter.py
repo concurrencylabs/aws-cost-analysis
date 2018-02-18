@@ -98,7 +98,7 @@ def handler(event, context):
             continue 
 
         lastProcessedTs = datetime.datetime.strptime(item['lastProcessedTimestamp'], consts.TIMESTAMP_FORMAT).replace(tzinfo=pytz.utc)
-        log.info("cur_manifest_lastmodified_ts:[{}] - lastProcessedTimestamp:[{}]".format(cur_manifest_lastmodified_ts, item['lastProcessedTimestamp']))
+        log.info("Found manifest - cur_manifest_lastmodified_ts:[{}] - lastProcessedTimestamp:[{}]".format(cur_manifest_lastmodified_ts, item['lastProcessedTimestamp']))
         if cur_manifest_lastmodified_ts > lastProcessedTs:
             #Start execution
             period = utils.get_period_prefix(year,month).replace('/','')
