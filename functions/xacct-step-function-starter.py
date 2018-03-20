@@ -11,7 +11,7 @@ from botocore.exceptions import ClientError as BotoClientError
 import awscostusageprocessor.utils as utils
 import awscostusageprocessor.processor as cur
 import awscostusageprocessor.consts as consts
-from awscostusageprocessor.errors import ManifestNotFoundError
+from awscostusageprocessor.errors import ManifestNotFoundError, CurBucketNotFoundError
 
 log = logging.getLogger()
 log.setLevel(logging.INFO)
@@ -19,6 +19,7 @@ log.setLevel(logging.INFO)
 sfnclient = boto3.client('stepfunctions')
 snsclient= boto3.client('sns')
 ddbresource = boto3.resource('dynamodb')
+ddbclient = boto3.client('dynamodb')
 
 
 """
@@ -69,20 +70,46 @@ def handler(event, context):
         kwargs['accountId'] = item['awsPayerAccountId']
         kwargs['xAccountSource']=True
         kwargs['roleArn'] = item['roleArn']
-        minutesSinceLastCurProcessed = int((now - datetime.datetime.strptime(item.get('lastProcessedTimestamp',consts.EPOCH_TS),consts.TIMESTAMP_FORMAT).replace(tzinfo=pytz.utc)).seconds / 60)
-        log.info("minutesSinceLastCurProcessed [{}]".format(minutesSinceLastCurProcessed))
 
         #See how old is the latest CUR manifest in S3 and compare it against the lastProcessedTimestamp in the AWSAccountMetadata DDB table
         #If the CUR manifest is newer, then start processing
         try:
             log.info("Starting new CUR evaluation for account [{}]".format(kwargs['accountId']))
+            lastProcessedTs = datetime.datetime.strptime(item.get('lastProcessedTimestamp',consts.EPOCH_TS), consts.TIMESTAMP_FORMAT).replace(tzinfo=pytz.utc)
+            minutesSinceLastCurProcessed = int((now - lastProcessedTs).total_seconds() / 60)
+            log.info("minutesSinceLastCurProcessed [{}] - lastProcessedTimestamp [{}]".format(minutesSinceLastCurProcessed, item.get('lastProcessedTimestamp',consts.EPOCH_TS)))
+            curprocessorStatus = consts.CUR_PROCESSOR_STATUS_OK
+            curprocessorStatusDetails = '-'
+
             curprocessor = cur.CostUsageProcessor(**kwargs)
-            cur_manifest_lastmodified_ts = curprocessor.get_aws_manifest_lastmodified_ts()
+            cur_manifest_lastmodified_ts = curprocessor.aws_manifest_lastmodified_ts
+
+            log.info("Found manifest for awsAccountId:[{}] - cur_manifest_lastmodified_ts:[{}] - lastProcessedTimestamp:[{}]".format(curprocessor.accountId, cur_manifest_lastmodified_ts, item['lastProcessedTimestamp']))
+            if cur_manifest_lastmodified_ts > lastProcessedTs:
+                #Start execution
+                period = utils.get_period_prefix(year,month).replace('/','')
+                execname = "{}-{}-{}".format(curprocessor.accountId, period, hashlib.md5(str(time.time()).encode("utf-8")).hexdigest()[:8])
+                sfnresponse = sfnclient.start_execution(stateMachineArn=consts.STEP_FUNCTION_PREPARE_CUR_ATHENA,
+                                                     name=execname,
+                                                     input=json.dumps(kwargs))
+
+                #Prepare SNS notification
+                sfn_executionarn = sfnresponse['executionArn']
+                sfn_executionlink = "https://console.aws.amazon.com/states/home?region={}#/executions/details/{}\n".format(consts.AWS_DEFAULT_REGION, sfn_executionarn)
+                sfn_executionlinks += sfn_executionlink
+                execnames.append(execname)
+                log.info("Started execution - executionArn: {}".format(sfn_executionarn))
+
+        except CurBucketNotFoundError as e:
+            log.error("CurBucketNotFoundError [{}]".format(e.message))
+            curprocessorStatus = consts.CUR_PROCESSOR_STATUS_ERROR
+            curprocessorStatusDetails = e.message
+
         except ManifestNotFoundError as e:
-            log.info("ManifestNotFoundError [{}]".format(e.message))
-            cur_manifest_lastmodified_ts = datetime.datetime.strptime(consts.EPOCH_TS, consts.TIMESTAMP_FORMAT).replace(tzinfo=pytz.utc)
-            continue
-            #TODO: add CW metric filter and alarm for CURs not found
+            log.error("ManifestNotFoundError [{}]".format(e.message))
+            curprocessorStatus = consts.CUR_PROCESSOR_STATUS_ERROR
+            curprocessorStatusDetails = e.message
+
         except BotoClientError as be:
             errorType = ''
             if be.response['Error']['Code'] == 'AccessDenied':
@@ -90,35 +117,35 @@ def handler(event, context):
             else:
                 errorType = 'BotoClientError_'+be.response['Error']['Code']
             log.error("{} awsPayerAccountId [{}] roleArn [{}] [{}]".format(errorType, kwargs['accountId'], kwargs['roleArn'], be.message))
-            continue
+            curprocessorStatus = consts.CUR_PROCESSOR_STATUS_ERROR
+            curprocessorStatusDetails = errorType
 
         except Exception as e:
             log.error("xAcctStepFunctionStarterException awsPayerAccountId [{}] roleArn [{}] [{}]".format(kwargs['accountId'], kwargs['roleArn'], e))
             traceback.print_exc()
-            continue 
+            curprocessorStatus = consts.CUR_PROCESSOR_STATUS_ERROR
+            curprocessorStatusDetails = e.message
 
-        lastProcessedTs = datetime.datetime.strptime(item['lastProcessedTimestamp'], consts.TIMESTAMP_FORMAT).replace(tzinfo=pytz.utc)
-        log.info("Found manifest - cur_manifest_lastmodified_ts:[{}] - lastProcessedTimestamp:[{}]".format(cur_manifest_lastmodified_ts, item['lastProcessedTimestamp']))
-        if cur_manifest_lastmodified_ts > lastProcessedTs:
-            #Start execution
-            period = utils.get_period_prefix(year,month).replace('/','')
-            execname = "{}-{}-{}".format(curprocessor.accountId, period, hashlib.md5(str(time.time()).encode("utf-8")).hexdigest()[:8])
-            sfnresponse = sfnclient.start_execution(stateMachineArn=consts.STEP_FUNCTION_PREPARE_CUR_ATHENA,
-                                                 name=execname,
-                                                 input=json.dumps(kwargs))
 
-            #Prepare SNS notification
-            sfn_executionarn = sfnresponse['executionArn']
-            sfn_executionlink = "https://console.aws.amazon.com/states/home?region={}#/executions/details/{}\n".format(consts.AWS_DEFAULT_REGION, sfn_executionarn)
-            sfn_executionlinks += sfn_executionlink
-            execnames.append(execname)
+        #If there were errors, update Metadata table with details
+        if curprocessorStatus == consts.CUR_PROCESSOR_STATUS_ERROR:
+            log.info("Updating DDB table [{}]".format(consts.AWS_ACCOUNT_METADATA_DDB_TABLE))
+            ddbclient.update_item(TableName=consts.AWS_ACCOUNT_METADATA_DDB_TABLE,
+                Key = {'awsPayerAccountId': {'S': item['awsPayerAccountId']}},
+                AttributeUpdates={
+                    'status':{'Value': {'S': curprocessorStatus}},
+                    'statusDetails':{'Value': {'S': curprocessorStatusDetails}},
+                    'lastUpdateTimestamp':{'Value': {'S': kwargs['startTimestamp']}}
+                }
+            )
 
-            log.info("Started execution - executionArn: {}".format(sfn_executionarn))
+
+
 
     if sfn_executionlinks:
         snsclient.publish(TopicArn=consts.SNS_TOPIC,
             Message='New Cost and Usage report. Started execution: {}'.format(sfn_executionlinks),
-            Subject='New incoming Cost and Usage report executions')
+            Subject='New incoming Cost and Usage report executions - {}'.format(context.invoked_function_arn.split(':')[4]))
 
     log.info("Started executions: [{}]".format(execnames))
 

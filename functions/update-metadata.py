@@ -1,5 +1,12 @@
 from __future__ import print_function
-import logging
+
+import os, sys
+
+__location__ = os.path.dirname(os.path.realpath(__file__))
+site_pkgs = os.path.join(os.path.split(__location__)[0], "lib", "python2.7", "site-packages")
+sys.path.append(site_pkgs)
+
+import logging, datetime, pytz
 import boto3
 import awscostusageprocessor.consts as consts
 
@@ -27,11 +34,9 @@ def handler(event, context):
     ddbresponse = ddbclient.update_item(TableName=consts.AWS_ACCOUNT_METADATA_DDB_TABLE,
                                 Key = {'awsPayerAccountId': {'S': accountid}},
                                 AttributeUpdates={
-                                    'lastProcessedTimestamp':{
-                                        'Value': {
-                                            'S': event['startTimestamp']
-                                        }
-                                    }
+                                    'lastProcessedTimestamp':{'Value': {'S': event['startTimestamp']}},
+                                    'status':{'Value': {'S': consts.CUR_PROCESSOR_STATUS_OK}},
+                                    'lastUpdateTimestamp':{'Value': {'S': datetime.datetime.now(pytz.utc).strftime(consts.TIMESTAMP_FORMAT)}}
                                 },
                                 ReturnConsumedCapacity='TOTAL'
                             )

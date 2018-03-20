@@ -18,8 +18,7 @@ WHERE period = ''
 /* View cost by AWS Service */
 SELECT lineitem_productcode,
          round(sum(cast(lineitem_unblendedcost AS double)),2) AS sum_unblendedcost
-FROM billing.hourly
-WHERE period='<period>'
+FROM hourly_<period>
 GROUP BY  lineitem_productcode
 ORDER BY  sum_unblendedcost DESC
 
@@ -32,8 +31,7 @@ is inferred based on usage, but it's not always clear'
 
 SELECT lineitem_productcode, lineItem_UsageType,
          round(sum(cast(lineitem_unblendedcost AS double)),2) AS sum_unblendedcost
-FROM billing.hourly
-WHERE period='<period>'
+FROM hourly_<period>
 GROUP BY  lineitem_productcode, lineItem_UsageType
 ORDER BY  sum_unblendedcost DESC
 
@@ -47,8 +45,7 @@ This information is not available using AWS Cost Explorer. Cost Explorer only sh
 SELECT lineitem_productCode,
          lineitem_resourceId,
          sum(cast(lineitem_unblendedcost AS double)) AS sum_unblendedcost
-FROM billing.hourly
-WHERE period='<period>'
+FROM hourly_<period>
 GROUP BY  lineitem_productCode,lineitem_resourceId
 ORDER BY  sum_unblendedcost desc
 LIMIT 10

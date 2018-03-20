@@ -1,14 +1,14 @@
 #!/usr/bin/python
 import sys
-import json
+import json, pytz, datetime
 import gzip
 import os
 import traceback
 import boto3
 import utils, consts
-from errors import ManifestNotFoundError
+from errors import ManifestNotFoundError, CurBucketNotFoundError
 
-from botocore.exceptions import ClientError
+from botocore.exceptions import ClientError as BotoClientError
 
 class CostUsageProcessor():
     def __init__(self, **args):
@@ -16,42 +16,25 @@ class CostUsageProcessor():
         self.s3destclient = None
         self.s3resource = None
 
-        self.sourceBucket = ''
-        if 'sourceBucket' in args: self.sourceBucket = args['sourceBucket']
+        self.status = consts.CUR_PROCESSOR_STATUS_OK
+        self.statusDetails = '-'
 
-        self.sourcePrefix = ''
-        if 'sourcePrefix' in args: self.sourcePrefix = args['sourcePrefix']
-
-        self.destBucket = ''
-        if 'destBucket' in args: self.destBucket = args['destBucket']
-
-        self.destPrefix = ''
-        if 'destPrefix' in args: self.destPrefix = args['destPrefix']
-
-        self.year = ''
-        if 'year' in args: self.year = args['year']
-
-        self.month = ''
-        if 'month' in args: self.month = args['month']
-
-        self.limit = 1000
-        if 'limit' in args: self.limit = args['limit']
-
-        self.xAccountSource = False
-        if 'xAccountSource' in args: self.xAccountSource = args['xAccountSource']
-
-        self.xAccountDest = False
-        if 'xAccountDest' in args: self.xAccountDest = args['xAccountDest']
-
-        self.roleArn = ''
-        if 'roleArn' in args: self.roleArn = args['roleArn']
-
+        self.sourceBucket = args.get('sourceBucket','')
+        self.sourcePrefix = args.get('sourcePrefix','')
+        self.destBucket = args.get('destBucket','')
+        self.destPrefix = args.get('destPrefix','')
+        self.year = args.get('year','')
+        self.month = args.get('month','')
+        self.limit = args.get('limit',1000)
+        self.xAccountSource = args.get('xAccountSource',False)
+        self.xAccountDest = args.get('xAccountDest',False)
+        self.roleArn = args.get('roleArn','')
         self.accountId = args.get('accountId','')
 
         self.validate()
         self.init_clients()
 
-        #self.accountId = args.get('accountId','')
+        self.aws_manifest_lastmodified_ts = datetime.datetime.strptime(consts.EPOCH_TS, consts.TIMESTAMP_FORMAT).replace(tzinfo=pytz.utc)
 
         self.latest_manifest_key = self.get_latest_aws_manifest_key()
         self.curManifestJson = self.get_aws_manifest_content()
@@ -136,9 +119,11 @@ class CostUsageProcessor():
                                     })
             destS3keys.append(finalS3Key)
 
-      #Remove temporary files. This is also important to avoid Lambda errors where the local Lambda storage can be easily reached after a few executions
+      #Remove temporary files. This is also important to avoid Lambda errors where the local Lambda storage limit can be easily reached after a few executions
       os.remove(tmpLocalKey)
       os.remove(finalLocalKey)
+
+      self.status = consts.CUR_PROCESSOR_STATUS_OK
 
       return destS3keys
 
@@ -150,7 +135,7 @@ class CostUsageProcessor():
 
     def get_latest_aws_manifest_key(self):
         manifestprefix = self.sourcePrefix + utils.get_period_prefix(self.year, self.month)
-        print "Getting Manifest key for acccount:[{}] - bucket:[{}] - prefix:[{}]".format(self.accountId, self.sourceBucket,manifestprefix)
+        print "Getting Manifest key for acccount:[{}] - bucket:[{}] - prefix:[{}]".format(self.accountId, self.sourceBucket, manifestprefix)
         manifest_key = ''
         try:
             response = self.s3sourceclient.list_objects_v2(Bucket=self.sourceBucket,Prefix=manifestprefix)
@@ -162,16 +147,29 @@ class CostUsageProcessor():
                     if '-Manifest.json' in key and post_prefix.find("/") < 0:#manifest file is at top level after prefix and not inside one of the folders
                         manifest_key = key
                         break
+
+        except BotoClientError as bce:
+            self.status = consts.CUR_PROCESSOR_STATUS_ERROR
+            if bce.response['Error']['Code'] == 'NoSuchBucket':
+                self.statusDetails = bce.response['Error']['Code']
+                raise CurBucketNotFoundError("{} - bucket:[{}]".format(bce.message, self.sourceBucket))
+            else:
+                self.statusDetails = 'BotoClientError_'+bce.response['Error']['Code']
+                raise
+
         except Exception as e:
+            self.status = consts.CUR_PROCESSOR_STATUS_ERROR
+            self.statusDetails = e.message
             print "Error when getting manifest key for acccount:[{}] - bucket:[{}] - key:[{}]".format(self.accountId, self.sourceBucket, manifest_key)
             print e.message
             traceback.print_exc()
 
         if not manifest_key:
-            raise ManifestNotFoundError("Could not find manifest file in bucket:[{}], key:[{}]".format(self.sourceBucket, manifest_key))
+            self.status = consts.CUR_PROCESSOR_STATUS_ERROR
+            self.statusDetails = "ManifestNotFoundError - key:[{}]".format(manifest_key)
+            raise ManifestNotFoundError("Could not find manifest file in bucket:[{}]".format(self.sourceBucket))
 
         return manifest_key
-
 
 
     """
@@ -188,6 +186,8 @@ class CostUsageProcessor():
             print "Getting contents of manifest [{}]".format(manifest_key)
             response = s3client.get_object(Bucket=bucket, Key=manifest_key)
         except Exception as e:
+            self.status = consts.CUR_PROCESSOR_STATUS_ERROR
+            self.statusDetails = e.message
             print "There was a problem getting object - bucket:[{}] - key [{}]".format(bucket, manifest_key)
             print e.message
 
@@ -201,41 +201,13 @@ class CostUsageProcessor():
 
 
     """
-    This method gets the AWS Account ID from the Manifest file. This is used for Athena resource creation and
-    Lambda functions that need to know the AWS Account ID.
-    NOTE: replaced by get_aws_manifest_content, which can be used to extract not just accountId, but all other fields
-    in the CUR manifest
-    """
-    """
-    def get_account_id_from_aws_manifest(self):
-        result = ''
-        manifest_key = self.get_latest_aws_manifest_key()
-        print "Getting accountId from manifest file - bucket: [{}] - key: [{}]".format(self.sourceBucket, manifest_key)
-        response = self.s3sourceclient.get_object(Bucket=self.sourceBucket, Key=manifest_key)
-        if 'Body' in response:
-            manifest_json = json.loads(response['Body'].read())
-            if 'account' in manifest_json:
-                result = manifest_json['account']
-        return result
-    """
-
-    #TODO: this function is redundant, we can get the lastmodified_ts from the call to S3 in method get_aws_manifest_content and update the instance of CostUsageProcessor
-    def get_aws_manifest_lastmodified_ts(self):
-        result = ''
-        manifest_key = self.get_latest_aws_manifest_key()
-        print "Getting creation timestamp from manifest file - bucket: [{}] - key: [{}]".format(self.sourceBucket, manifest_key)
-        response = self.s3sourceclient.get_object(Bucket=self.sourceBucket, Key=manifest_key)
-        if 'LastModified' in response:
-            result = response['LastModified']
-        return result
-
-    """
     Returns a JSON object representing the AWS Cost and Usage Report manifest
     """
     def get_aws_manifest_content(self):
         result = {}
         print "Getting manifest file JSON content - bucket: [{}] - key: [{}]".format(self.sourceBucket, self.latest_manifest_key)
         response = self.s3sourceclient.get_object(Bucket=self.sourceBucket, Key=self.latest_manifest_key)
+        self.aws_manifest_lastmodified_ts = response.get('LastModified','')
         if 'Body' in response:
             result = json.loads(response['Body'].read())
         return result
@@ -368,3 +340,4 @@ class CostUsageProcessor():
                 if self.xAccountDest:
                     print("Getting xAcct S3 dest client")
                     self.s3destclient = boto3.client('s3',aws_access_key_id=accessKeyId, aws_secret_access_key=secretAccessKey,aws_session_token=sessionToken)
+

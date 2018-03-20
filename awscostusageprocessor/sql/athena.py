@@ -6,6 +6,7 @@ sys.path.append(site_pkgs)
 
 import time, logging, json, datetime, pytz
 import boto3, botocore
+from botocore.config import Config
 import awscostusageprocessor.utils as utils
 import awscostusageprocessor.consts as consts
 import awscostusageprocessor.errors as errors
@@ -14,10 +15,12 @@ log = logging.getLogger()
 log.setLevel(logging.INFO)
 
 
-
 athenaclient = boto3.client('athena')
 s3resource = boto3.resource('s3')
 ddbclient = boto3.client('dynamodb')
+
+
+
 
 
 QUERY_EXECUTIONS_FOLDER = 'queryexecutions'
@@ -111,9 +114,9 @@ class AthenaQueryMgr():
     """
     #TODO: send a timeout parameter
     def poll_query_state(self,queryexecutionid, sleep_ms):
+        sleep_ms = float(sleep_ms)/1000
         querystate = ''
         while True:
-            time.sleep(sleep_ms/1000)
             queryexecution = athenaclient.get_query_execution(QueryExecutionId=queryexecutionid)
             querystate = queryexecution['QueryExecution']['Status']['State']
             if querystate == consts.ATHENA_QUERY_STATE_FAILED:
@@ -124,6 +127,7 @@ class AthenaQueryMgr():
             else:
                 log.info("querystate {}".format(querystate))
             if querystate in [consts.ATHENA_QUERY_STATE_FAILED,consts.ATHENA_QUERY_STATE_CANCELLED,consts.ATHENA_QUERY_STATE_SUCCEEDED]:break
+            else: time.sleep(sleep_ms)
         return querystate
 
 
