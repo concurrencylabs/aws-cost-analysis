@@ -23,7 +23,7 @@ information is used by
 
 - The processes that decide whether to query from Athena or from S3.
 - Step Function starter, in order to decide if a new execution should be triggered.
-- Any application that consumes Cost and Usage data and needs to know when a new report has been processed
+- Any application that consumes Cost and Usage data and needs to know when the latest report has been processed
 """
 
 def handler(event, context):
@@ -36,6 +36,7 @@ def handler(event, context):
                                 AttributeUpdates={
                                     'lastProcessedTimestamp':{'Value': {'S': event['startTimestamp']}},
                                     'status':{'Value': {'S': consts.CUR_PROCESSOR_STATUS_OK}},
+                                    'statusDetails':{'Value': {'S': consts.CUR_PROCESSOR_STATUS_DETAILS_NA}},
                                     'lastUpdateTimestamp':{'Value': {'S': datetime.datetime.now(pytz.utc).strftime(consts.TIMESTAMP_FORMAT)}}
                                 },
                                 ReturnConsumedCapacity='TOTAL'
