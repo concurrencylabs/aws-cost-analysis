@@ -71,8 +71,11 @@ class CostUsageProcessor():
 
       #Get content for all report files
       for rk in report_keys:
+
         tokens = rk.split("/")
         hash = tokens[len(tokens)-2]
+
+
         response = self.s3sourceclient.get_object(Bucket=self.sourceBucket, Key=rk)
         if '/var/task' in os.getcwd(): #executing as a Lambda function
             tmpLocalFolder = '/tmp'
@@ -85,6 +88,7 @@ class CostUsageProcessor():
         fileToUpload = ''
         finalS3Key = ''
 
+
         #Download latest report as a tmp local file
         with open(tmpLocalKey, 'wb') as report:
             self.s3resource.Bucket(self.sourceBucket).download_fileobj(rk, report)
@@ -93,7 +97,7 @@ class CostUsageProcessor():
         record_count = 0
         if action == consts.ACTION_PREPARE_ATHENA:
             fileToUpload = finalLocalKey
-            finalS3Key = monthDestPrefix + "cost-and-usage-athena.csv.gz" #TODO:test for case when multiple files (report_keys) are listed in the manifest
+            finalS3Key = monthDestPrefix + "cost-and-usage-athena.csv.gz"
             with gzip.open(tmpLocalKey, 'rb') as f:
                 f.next()#skips first line for Athena files
                 #Write contents to another tmp file, which will be uploaded to S3
@@ -119,9 +123,10 @@ class CostUsageProcessor():
                                     })
             destS3keys.append(finalS3Key)
 
-      #Remove temporary files. This is also important to avoid Lambda errors where the local Lambda storage limit can be easily reached after a few executions
-      os.remove(tmpLocalKey)
-      os.remove(finalLocalKey)
+        #Remove temporary files. This is also important to avoid Lambda errors where the local Lambda storage limit can be easily reached after a few executions
+        os.remove(tmpLocalKey)
+        os.remove(finalLocalKey)
+
 
       self.status = consts.CUR_PROCESSOR_STATUS_OK
 
