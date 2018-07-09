@@ -92,7 +92,7 @@ place the modified Cost and Usage files.
 **2. Install the script and create IAM Permissions**.
  
 * Clone this repo
-* Create a virtualenv (recommended) and activate it.
+* Create a virtualenv (recommended) and activate it. Please note the current codebase only supports Python 2.7.
 * Install dependencies ```pip install -r requirements.txt```
 * Make sure the AWS CLI is installed in your system, including your AWS credentials.
 * Make sure your IAM user or EC2 Instance profile has the required S3 permissions
